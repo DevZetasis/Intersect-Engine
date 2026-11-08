@@ -17,6 +17,7 @@ using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -720,6 +721,9 @@ public static partial class DbInterface
                 ItemDescriptor.Lookup.Clear();
 
                 break;
+            case GameObjectType.MonsterSpecies:
+                MonsterSpeciesDescriptor.Lookup.Clear();
+                break;
             case GameObjectType.Npc:
                 NPCDescriptor.Lookup.Clear();
 
@@ -820,6 +824,12 @@ public static partial class DbInterface
                             ItemDescriptor.Lookup.Set(itm.Id, itm);
                         }
 
+                        break;
+                    case GameObjectType.MonsterSpecies:
+                        foreach (var species in context.MonsterSpecies)
+                        {
+                            MonsterSpeciesDescriptor.Lookup.Set(species.Id, species);
+                        }
                         break;
                     case GameObjectType.Npc:
                         foreach (var npc in context.Npcs)
@@ -1112,6 +1122,9 @@ public static partial class DbInterface
                 dbObj = new ItemDescriptor(predefinedid);
 
                 break;
+            case GameObjectType.MonsterSpecies:
+                dbObj = new MonsterSpeciesDescriptor(predefinedid);
+                break;
             case GameObjectType.Npc:
                 dbObj = new NPCDescriptor(predefinedid);
 
@@ -1213,6 +1226,10 @@ public static partial class DbInterface
                         context.Items.Add((ItemDescriptor)dbObj);
                         ItemDescriptor.Lookup.Set(dbObj.Id, dbObj);
 
+                        break;
+                    case GameObjectType.MonsterSpecies:
+                        context.MonsterSpecies.Add((MonsterSpeciesDescriptor)dbObj);
+                        MonsterSpeciesDescriptor.Lookup.Set(dbObj.Id, dbObj);
                         break;
                     case GameObjectType.Npc:
                         context.Npcs.Add((NPCDescriptor)dbObj);
@@ -1348,6 +1365,9 @@ public static partial class DbInterface
                     case GameObjectType.Item:
                         context.Items.Remove((ItemDescriptor)gameObject);
 
+                        break;
+                    case GameObjectType.MonsterSpecies:
+                        context.MonsterSpecies.Remove((MonsterSpeciesDescriptor)gameObject);
                         break;
                     case GameObjectType.Npc:
                         context.Npcs.Remove((NPCDescriptor)gameObject);
@@ -1520,6 +1540,9 @@ public static partial class DbInterface
 
                         break;
                     }
+                    case GameObjectType.MonsterSpecies:
+                        context.MonsterSpecies.Update((MonsterSpeciesDescriptor)gameObject);
+                        break;
                     case GameObjectType.Npc:
                         context.Npcs.Update((NPCDescriptor)gameObject);
 

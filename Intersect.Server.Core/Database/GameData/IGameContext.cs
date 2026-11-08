@@ -4,6 +4,7 @@ using Intersect.Framework.Core.GameObjects.Events;
 using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -35,6 +36,8 @@ public interface IGameContext : IDbContext
     DbSet<MapList> MapFolders { get; set; }
 
     DbSet<NPCDescriptor> Npcs { get; set; }
+
+    DbSet<MonsterSpeciesDescriptor> MonsterSpecies { get; set; }
 
     DbSet<ProjectileDescriptor> Projectiles { get; set; }
 

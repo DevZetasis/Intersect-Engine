@@ -8,6 +8,7 @@ using Intersect.Framework.Core.GameObjects.Events;
 using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -1751,6 +1752,12 @@ public static partial class PacketSender
                     SendGameObject(client, obj.Value, false, false, packetList);
                 }
 
+                break;
+            case GameObjectType.MonsterSpecies:
+                foreach (var obj in MonsterSpeciesDescriptor.Lookup)
+                {
+                    SendGameObject(client, obj.Value, false, false, packetList);
+                }
                 break;
             case GameObjectType.Npc:
                 foreach (var obj in NPCDescriptor.Lookup)

@@ -404,6 +404,36 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.ToTable("MapFolders");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BaseStatsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("BaseStats");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("Sprite")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterSpecies");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.NPCs.NPCDescriptor", b =>
                 {
                     b.Property<Guid>("Id")

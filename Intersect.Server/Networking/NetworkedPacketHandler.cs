@@ -8,6 +8,7 @@ using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -902,6 +903,9 @@ internal sealed partial class NetworkedPacketHandler
                     obj = ItemDescriptor.Get(id);
 
                     break;
+                case GameObjectType.MonsterSpecies:
+                    obj = MonsterSpeciesDescriptor.Get(id);
+                    break;
                 case GameObjectType.Npc:
                     obj = NPCDescriptor.Get(id);
 
@@ -1034,6 +1038,9 @@ internal sealed partial class NetworkedPacketHandler
                     obj = ItemDescriptor.Get(id);
 
                     break;
+                case GameObjectType.MonsterSpecies:
+                    obj = MonsterSpeciesDescriptor.Get(id);
+                    break;
                 case GameObjectType.Npc:
                     obj = NPCDescriptor.Get(id);
 
@@ -1133,6 +1140,25 @@ internal sealed partial class NetworkedPacketHandler
                         case ResourceDescriptor resourceDescriptor:
                             MapController.DespawnInstancesOf(resourceDescriptor);
                             break;
+                    }
+
+                    if (obj is MonsterSpeciesDescriptor)
+                    {
+                        var candidate = new MonsterSpeciesDescriptor(id);
+                        try
+                        {
+                            candidate.Load(packet.Data);
+                        }
+                        catch (Newtonsoft.Json.JsonException)
+                        {
+                            PacketSender.SendError(client, "Invalid monster species data.", "Monster Species");
+                            return;
+                        }
+                        if (!candidate.IsValid)
+                        {
+                            PacketSender.SendError(client, "A species needs a name and positive HP, Attack, Defense, and Speed.", "Monster Species");
+                            return;
+                        }
                     }
 
                     obj.Load(packet.Data);

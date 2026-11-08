@@ -5,6 +5,7 @@ using Intersect.Framework.Core.GameObjects.Events;
 using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -51,6 +52,8 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
 
     //NPCs
     public DbSet<NPCDescriptor> Npcs { get; set; }
+
+    public DbSet<MonsterSpeciesDescriptor> MonsterSpecies { get; set; }
 
     //Projectiles
     public DbSet<ProjectileDescriptor> Projectiles { get; set; }

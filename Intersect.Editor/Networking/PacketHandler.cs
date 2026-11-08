@@ -12,6 +12,7 @@ using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.Framework.Core.GameObjects.Mapping.Tilesets;
 using Intersect.Framework.Core.GameObjects.Maps;
 using Intersect.Framework.Core.GameObjects.Maps.MapList;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.NPCs;
 using Intersect.Framework.Core.GameObjects.PlayerClass;
 using Intersect.Framework.Core.GameObjects.Resources;
@@ -513,6 +514,18 @@ internal sealed partial class PacketHandler
                     ItemDescriptor.Lookup.Set(id, itm);
                 }
 
+                break;
+            case GameObjectType.MonsterSpecies:
+                if (deleted)
+                {
+                    MonsterSpeciesDescriptor.Lookup.DeleteAt(id);
+                }
+                else
+                {
+                    var species = new MonsterSpeciesDescriptor(id);
+                    species.Load(json);
+                    MonsterSpeciesDescriptor.Lookup.Set(id, species);
+                }
                 break;
             case GameObjectType.Npc:
                 if (deleted)
