@@ -46,6 +46,7 @@ internal static class Program
         }
         catch (Exception exception)
         {
+            Console.Error.WriteLine(exception.ToString());
             ServerContext.DispatchUnhandledException(exception.InnerException ?? exception);
         }
     }
