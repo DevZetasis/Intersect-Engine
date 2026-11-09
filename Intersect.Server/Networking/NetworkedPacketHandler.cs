@@ -823,7 +823,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -886,7 +886,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.Animation)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -935,6 +935,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterNature:
+                    obj = MonsterNatureDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterMove:
                     using (var gameDb = DbInterface.CreateGameContext())
@@ -1077,7 +1080,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1109,6 +1112,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterNature:
+                    obj = MonsterNatureDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterMove:
                     obj = MonsterMoveDescriptor.Get(id);
@@ -1220,7 +1226,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor)
                     {
                         try
                         {
@@ -1230,6 +1236,12 @@ internal sealed partial class NetworkedPacketHandler
                                 candidate.Load(packet.Data);
                                 MonsterTypeRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null);
                                 MonsterMoveRules.ValidateLearnset(candidate, moveId => MonsterMoveDescriptor.Get(moveId) != null);
+                            }
+                            else if (obj is MonsterNatureDescriptor)
+                            {
+                                var candidate = new MonsterNatureDescriptor(id);
+                                candidate.Load(packet.Data);
+                                MonsterNatureRules.Validate(candidate);
                             }
                             else if (obj is MonsterMoveDescriptor)
                             {

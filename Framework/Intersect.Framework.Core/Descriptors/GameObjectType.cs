@@ -81,4 +81,7 @@ public enum GameObjectType
 
     [GameObjectInfo(typeof(MonsterMoveDescriptor), "monster_moves")]
     MonsterMove = 21,
+
+    [GameObjectInfo(typeof(MonsterNatureDescriptor), "monster_natures")]
+    MonsterNature = 22,
 }

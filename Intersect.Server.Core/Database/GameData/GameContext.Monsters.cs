@@ -10,6 +10,9 @@ public abstract partial class GameContext
     private void ValidateMonsterContent()
     {
         ChangeTracker.DetectChanges();
+        foreach (var entry in ChangeTracker.Entries<MonsterNatureDescriptor>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+            MonsterNatureRules.Validate(entry.Entity);
         var changed = ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor ||
                 (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor)).ToArray();
@@ -75,7 +78,7 @@ public abstract partial class GameContext
     {
         ChangeTracker.DetectChanges();
         if (!ChangeTracker.Entries().Any(entry => (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted) &&
-                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor ||
+                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor ||
                  (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor))))
             return base.SaveChanges(acceptAllChangesOnSuccess);
         lock (MonsterTypeRules.ContentGate)

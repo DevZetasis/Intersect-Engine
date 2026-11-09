@@ -309,7 +309,7 @@ public class MonsterMoveTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_moves", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoves();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterNatures().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
