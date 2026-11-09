@@ -34,6 +34,7 @@ namespace Intersect.Server.Core
                 Parser.Register<CpsCommand>();
                 Parser.Register<ExitCommand>();
                 Parser.Register<GetVariableCommand>();
+                Parser.Register<GrantMonsterCommand>();
                 Parser.Register<HelpCommand>(Parser.Settings);
                 Parser.Register<KickCommand>();
                 Parser.Register<KillCommand>();

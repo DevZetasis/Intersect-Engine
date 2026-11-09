@@ -206,6 +206,9 @@ public partial record Options
 
     public PartyOptions Party { get; set; } = new();
 
+    [RequiresRestart]
+    public MonsterOptions Monsters { get; set; } = new();
+
     public LootOptions Loot { get; set; } = new();
 
     public ProcessingOptions Processing { get; set; } = new();

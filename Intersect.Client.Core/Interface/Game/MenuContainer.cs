@@ -42,6 +42,7 @@ public partial class MenuContainer : Panel
     private readonly ImagePanel _partyButtonContainer;
     private readonly Button _partyButton;
     private readonly PartyWindow _partyWindow;
+    private readonly Monsters.MonsterRosterWindow _monsterWindow;
 
     private readonly ImagePanel _guildButtonContainer;
     private readonly Button _guildButton;
@@ -212,6 +213,22 @@ public partial class MenuContainer : Panel
         _escapeMenuButton.SetToolTipText(text: Strings.GameMenu.Menu);
         _escapeMenuButton.Clicked += EscapeMenuButtonClicked;
 
+        var monstersButton = new Button(this, "MonstersButton")
+        {
+            Dock = Pos.Left, Size = new Point(80, 36), Text = Strings.Monsters.Title,
+            Font = gameCanvas.Skin.DefaultFont, FontSize = 12,
+        };
+        monstersButton.Clicked += (_, _) =>
+        {
+            if (_monsterWindow.IsVisibleInTree) _monsterWindow.Hide();
+            else
+            {
+                HideWindows();
+                _monsterWindow.Show();
+                _monsterWindow.RefreshFromServer();
+            }
+        };
+
         var x = 0;
         foreach (var child in Children)
         {
@@ -230,10 +247,13 @@ public partial class MenuContainer : Panel
             action: () =>
             {
                 LoadJsonUi(GameContentManager.UI.InGame, Graphics.Renderer!.GetResolutionString());
+                // Make room for Monsters without resizing the existing configured icons/children.
+                SizeToChildren(resizeX: true, resizeY: false, recursive: false);
             }
         );
 
         _partyWindow = new PartyWindow(gameCanvas: gameCanvas);
+        _monsterWindow = new Monsters.MonsterRosterWindow(gameCanvas);
         _friendsWindow = new FriendsWindow(gameCanvas: gameCanvas);
         _inventoryWindow = new InventoryWindow(gameCanvas: gameCanvas);
         _spellsWindow = new SpellsWindow(gameCanvas: gameCanvas);
@@ -250,6 +270,7 @@ public partial class MenuContainer : Panel
         _spellsWindow.Update();
         _characterWindow.Update();
         _partyWindow.Update();
+        _monsterWindow.Update();
         _friendsWindow.Update();
         _questsWindow.Update(updateQuestLog);
         _mapItemWindow.Update();
@@ -278,6 +299,7 @@ public partial class MenuContainer : Panel
         _friendsWindow.Hide();
         _inventoryWindow.Hide();
         _partyWindow.Hide();
+        _monsterWindow.Hide();
         _questsWindow.Hide();
         _spellsWindow.Hide();
         _guildWindow.Hide();
@@ -427,7 +449,7 @@ public partial class MenuContainer : Panel
                           _questsWindow.IsVisible() ||
                           _spellsWindow.IsVisibleInTree ||
                           _partyWindow.IsVisible() ||
-                          _guildWindow.IsVisibleInTree;
+                          _guildWindow.IsVisibleInTree || _monsterWindow.IsVisibleInTree;
         return windowsOpen;
     }
 

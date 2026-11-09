@@ -8,6 +8,7 @@ public static partial class SharedConstants
 
     public static readonly string VersionName = "Beta Eridani (201802251101-05)";
 
-    public static readonly byte[] VersionData = Encoding.UTF8.GetBytes(VersionName);
+    // New packet types shift registry keys. Reject older peers before decoding gameplay packets.
+    public static readonly byte[] VersionData = Encoding.UTF8.GetBytes(VersionName + "|monster-ownership-v1");
 
 }

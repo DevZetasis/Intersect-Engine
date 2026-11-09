@@ -97,6 +97,7 @@ public static partial class PacketSender
             player.RecalculateStatsAndPoints();
             player.UnequipInvalidItems();
             player.InGame = true;
+            Intersect.Server.Monsters.MonsterRoster.Send(player);
 
             SendTimeTo(client);
 

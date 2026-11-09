@@ -17,6 +17,8 @@ public interface IPlayerContext : IDbContext
 
     DbSet<Player> Players { get; set; }
 
+    DbSet<MonsterInstance> OwnedMonsters { get; set; }
+
     DbSet<BankSlot> Player_Bank { get; set; }
 
     DbSet<Friend> Player_Friends { get; set; }

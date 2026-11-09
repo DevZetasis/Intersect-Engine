@@ -23,6 +23,8 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
 
     public DbSet<Player> Players { get; set; }
 
+    public DbSet<MonsterInstance> OwnedMonsters { get; set; }
+
     public DbSet<BankSlot> Player_Bank { get; set; }
 
     public DbSet<Friend> Player_Friends { get; set; }
@@ -69,6 +71,17 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RefreshToken>().HasOne(token => token.User);
+
+        var monsters = modelBuilder.Entity<MonsterInstance>();
+        monsters.HasOne<Player>().WithMany().HasForeignKey(monster => monster.OwnerPlayerId).OnDelete(DeleteBehavior.Cascade);
+        monsters.HasIndex(monster => monster.GrantRequestId).IsUnique();
+        monsters.HasIndex(monster => new { monster.OwnerPlayerId, monster.Location, monster.Slot }).IsUnique();
+        monsters.Property(monster => monster.Revision).IsConcurrencyToken();
+        monsters.ToTable("OwnedMonsters", table =>
+        {
+            table.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
+            table.HasCheckConstraint("CK_OwnedMonsters_Progression", "Level >= 1 AND Experience >= 0");
+        });
 
         modelBuilder.Entity<Ban>().HasOne(b => b.User);
         modelBuilder.Entity<Mute>().HasOne(b => b.User);

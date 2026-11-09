@@ -904,6 +904,14 @@ internal sealed partial class NetworkedPacketHandler
 
                     break;
                 case GameObjectType.MonsterSpecies:
+                    using (var playerDb = DbInterface.CreatePlayerContext())
+                    {
+                        if (playerDb.OwnedMonsters.Any(monster => monster.SpeciesId == id))
+                        {
+                            PacketSender.SendError(client, "This species is referenced by owned monsters and cannot be deleted.", "Monster Species");
+                            return;
+                        }
+                    }
                     obj = MonsterSpeciesDescriptor.Get(id);
                     break;
                 case GameObjectType.Npc:

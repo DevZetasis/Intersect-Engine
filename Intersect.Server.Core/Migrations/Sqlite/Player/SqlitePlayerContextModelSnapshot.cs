@@ -17,6 +17,57 @@ namespace Intersect.Server.Migrations.Sqlite.Player
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
 
+            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.MonsterInstance", b =>
+                {
+                    b.Property<long>("CreatedAtUtcMilliseconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Experience")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("GrantRequestId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Location")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Nickname")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerPlayerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("SpeciesId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+                    b.HasIndex("GrantRequestId").IsUnique();
+                    b.HasIndex("OwnerPlayerId", "Location", "Slot").IsUnique();
+                    b.ToTable("OwnedMonsters", t =>
+                    {
+                        t.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
+                        t.HasCheckConstraint("CK_OwnedMonsters_Progression", "Level >= 1 AND Experience >= 0");
+                    });
+                    b.HasOne("Intersect.Server.Entities.Player", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPlayerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Api.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")

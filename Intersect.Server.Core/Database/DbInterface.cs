@@ -142,7 +142,8 @@ public static partial class DbInterface
         bool explicitLoad = false,
         bool lazyLoading = false,
         bool autoDetectChanges = false,
-        QueryTrackingBehavior? queryTrackingBehavior = default
+        QueryTrackingBehavior? queryTrackingBehavior = default,
+        bool? killServerOnConcurrencyException = default
     ) => PlayerContext.Create(new DatabaseContextOptions
     {
         AutoDetectChanges = autoDetectChanges,
@@ -152,7 +153,7 @@ public static partial class DbInterface
         ),
         DatabaseType = Options.Instance.PlayerDatabase.Type,
         ExplicitLoad = explicitLoad,
-        KillServerOnConcurrencyException = Options.Instance.PlayerDatabase.KillServerOnConcurrencyException,
+        KillServerOnConcurrencyException = killServerOnConcurrencyException ?? Options.Instance.PlayerDatabase.KillServerOnConcurrencyException,
         LazyLoading = lazyLoading,
         LoggerFactory = CreateLoggerFactory<PlayerContext>(Options.Instance.PlayerDatabase),
         QueryTrackingBehavior = queryTrackingBehavior,

@@ -22,6 +22,62 @@ namespace Intersect.Server.Migrations.MySql.Player
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.MonsterInstance", b =>
+                {
+                    b.Property<long>("CreatedAtUtcMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Experience")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("GrantRequestId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("Location")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<string>("Nickname")
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid>("OwnerPlayerId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SpeciesId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.HasKey("Id");
+                    b.HasIndex("GrantRequestId").IsUnique();
+                    b.HasIndex("OwnerPlayerId", "Location", "Slot").IsUnique();
+                    b.ToTable("OwnedMonsters", t =>
+                    {
+                        t.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
+                        t.HasCheckConstraint("CK_OwnedMonsters_Progression", "Level >= 1 AND Experience >= 0");
+                    });
+                    b.HasOne("Intersect.Server.Entities.Player", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPlayerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Api.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
