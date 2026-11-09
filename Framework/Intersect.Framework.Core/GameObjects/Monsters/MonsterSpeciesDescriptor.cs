@@ -28,6 +28,16 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
         set => TypeIds = JsonConvert.DeserializeObject<Guid[]>(value ?? "[]") ?? Array.Empty<Guid>();
     }
 
+    [NotMapped]
+    public List<MonsterLearnsetEntry> Learnset { get; set; } = new();
+
+    [Column("Learnset"), JsonIgnore]
+    public string LearnsetJson
+    {
+        get => JsonConvert.SerializeObject(Learnset);
+        set => Learnset = JsonConvert.DeserializeObject<List<MonsterLearnsetEntry>>(value ?? "[]") ?? new();
+    }
+
     // Named JSON properties allow additional monster stats without altering RPG stat arrays.
     [Column("BaseStats"), JsonIgnore]
     public string BaseStatsJson
@@ -39,7 +49,8 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
     [NotMapped, JsonIgnore]
     public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Sprite != null &&
                            Folder != null && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
-                           TypeIds.All(id => id != Guid.Empty) && TypeIds.Distinct().Count() == TypeIds.Length;
+                           TypeIds.All(id => id != Guid.Empty) && TypeIds.Distinct().Count() == TypeIds.Length && Learnset != null &&
+                           Learnset.All(entry => entry is { IsValid: true });
 
     public override void Load(string json, bool keepCreationTime = false)
     {
@@ -49,6 +60,8 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
             // Missing assignments in older content mean unconfigured, even when reusing a draft.
             if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(TypeIds), StringComparison.OrdinalIgnoreCase) == null)
                 TypeIds = Array.Empty<Guid>();
+            if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(Learnset), StringComparison.OrdinalIgnoreCase) == null)
+                Learnset = new();
             base.Load(json, keepCreationTime);
         }
         finally

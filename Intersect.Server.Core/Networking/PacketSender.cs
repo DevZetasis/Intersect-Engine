@@ -1766,6 +1766,12 @@ public static partial class PacketSender
                     SendGameObject(client, obj.Value, false, false, packetList);
                 }
                 break;
+            case GameObjectType.MonsterMove:
+                foreach (var obj in MonsterMoveDescriptor.Lookup)
+                {
+                    SendGameObject(client, obj.Value, false, false, packetList);
+                }
+                break;
             case GameObjectType.Npc:
                 foreach (var obj in NPCDescriptor.Lookup)
                 {

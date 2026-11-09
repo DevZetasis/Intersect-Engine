@@ -20,6 +20,6 @@ public static partial class Strings
         public static LocalizedString Neutral = "1× — Neutral";
         public static LocalizedString Weak = "2× — Weak";
         public static LocalizedString Invalid = "Enter a name, a #RRGGBB color, and valid effectiveness relationships.";
-        public static LocalizedString DeletePrompt = "Delete this type? Types referenced by species or other types cannot be deleted.";
+        public static LocalizedString DeletePrompt = "Delete this type? Types referenced by species, moves or other types cannot be deleted.";
     }
 }

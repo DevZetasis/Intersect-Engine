@@ -404,6 +404,53 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.ToTable("MapFolders");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterMoveDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(0);
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TypeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AnimationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BasePower")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Accuracy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AlwaysHits")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Target")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterMoves");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -432,6 +479,10 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.Property<string>("TypeIdsJson")
                         .HasColumnType("TEXT")
                         .HasColumnName("Types");
+
+                    b.Property<string>("LearnsetJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Learnset");
 
                     b.HasKey("Id");
 

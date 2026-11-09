@@ -426,6 +426,56 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.ToTable("MapFolders");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterMoveDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("longtext")
+                        .HasColumnOrder(0);
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TypeId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<Guid?>("AnimationId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BasePower")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Accuracy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AlwaysHits")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Target")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterMoves");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -455,6 +505,10 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.Property<string>("TypeIdsJson")
                         .HasColumnType("longtext")
                         .HasColumnName("Types");
+
+                    b.Property<string>("LearnsetJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Learnset");
 
                     b.HasKey("Id");
 

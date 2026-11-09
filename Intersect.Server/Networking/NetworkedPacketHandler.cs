@@ -823,7 +823,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -838,6 +838,11 @@ internal sealed partial class NetworkedPacketHandler
             }
 
             var type = packet.Type;
+            if (type == GameObjectType.MonsterMove && MonsterTypeDescriptor.Lookup.Count == 0)
+            {
+                PacketSender.SendError(client, "Create a monster type before creating moves.", "Monster Move");
+                return;
+            }
             var obj = DbInterface.AddGameObject(type);
 
             var changed = false;
@@ -881,7 +886,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -903,6 +908,14 @@ internal sealed partial class NetworkedPacketHandler
             switch (type)
             {
                 case GameObjectType.Animation:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    {
+                        if (gameDb.MonsterMoves.Any(move => move.AnimationId == id))
+                        {
+                            PacketSender.SendError(client, "This animation is referenced by monster moves.", "Monster Move");
+                            return;
+                        }
+                    }
                     obj = AnimationDescriptor.Get(id);
 
                     break;
@@ -923,12 +936,23 @@ internal sealed partial class NetworkedPacketHandler
                     obj = ItemDescriptor.Get(id);
 
                     break;
+                case GameObjectType.MonsterMove:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    {
+                        if (MonsterMoveRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray()))
+                        {
+                            PacketSender.SendError(client, "This move is referenced by species learnsets. Remove those references before deleting it.", "Monster Move");
+                            return;
+                        }
+                    }
+                    obj = MonsterMoveDescriptor.Get(id);
+                    break;
                 case GameObjectType.MonsterType:
                     using (var gameDb = DbInterface.CreateGameContext())
                     {
-                        if (MonsterTypeRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray(), gameDb.MonsterTypes.AsNoTracking().ToArray()))
+                        if (MonsterTypeRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray(), gameDb.MonsterTypes.AsNoTracking().ToArray(), gameDb.MonsterMoves.AsNoTracking().ToArray()))
                         {
-                            PacketSender.SendError(client, "This type is referenced by species or another type. Remove those references before deleting it.", "Monster Type");
+                            PacketSender.SendError(client, "This type is referenced by species, moves or another type. Remove those references before deleting it.", "Monster Type");
                             return;
                         }
                     }
@@ -1053,7 +1077,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1085,6 +1109,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterMove:
+                    obj = MonsterMoveDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterType:
                     obj = MonsterTypeDescriptor.Get(id);
@@ -1193,7 +1220,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor)
                     {
                         try
                         {
@@ -1202,6 +1229,14 @@ internal sealed partial class NetworkedPacketHandler
                                 var candidate = new MonsterSpeciesDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterTypeRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null);
+                                MonsterMoveRules.ValidateLearnset(candidate, moveId => MonsterMoveDescriptor.Get(moveId) != null);
+                            }
+                            else if (obj is MonsterMoveDescriptor)
+                            {
+                                var candidate = new MonsterMoveDescriptor(id);
+                                candidate.Load(packet.Data);
+                                MonsterMoveRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null,
+                                    animationId => AnimationDescriptor.Get(animationId) != null);
                             }
                             else
                             {

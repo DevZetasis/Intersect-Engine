@@ -26,6 +26,7 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkNumericUpDown _specialAttack = StatInput();
     private readonly DarkNumericUpDown _specialDefense = StatInput();
     private readonly DarkNumericUpDown _speed = StatInput();
+    private readonly MonsterLearnsetEditor _learnset = new();
     private readonly DarkComboBox _primaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _secondaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private sealed record TypeChoice(Guid Id, string Name) { public override string ToString() => Name; }
@@ -73,6 +74,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.Speed, _speed);
         AddField(Strings.MonsterSpeciesEditor.PrimaryType, _primaryType);
         AddField(Strings.MonsterSpeciesEditor.SecondaryType, _secondaryType);
+        AddField(Strings.MonsterMoveEditor.Learnset, _learnset);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(5) };
         _btnCancel = AddButton(buttons, Strings.MonsterSpeciesEditor.Cancel, (_, _) => Close());
@@ -137,7 +139,7 @@ public sealed class FrmMonsterSpecies : EditorForm
 
     protected override void GameObjectUpdatedDelegate(GameObjectType type)
     {
-        if (type == GameObjectType.MonsterType) { ShowFields(); return; }
+        if (type is GameObjectType.MonsterType or GameObjectType.MonsterMove) { ShowFields(); return; }
         if (type != GameObjectType.MonsterSpecies) return;
         foreach (var (id, draft) in _drafts)
         {
@@ -188,6 +190,7 @@ public sealed class FrmMonsterSpecies : EditorForm
             _specialDefense.Value = _selected.BaseStats.SpecialDefense;
             _speed.Value = _selected.BaseStats.Speed;
             LoadTypeChoices();
+            _learnset.Bind(_selected.Learnset);
             DrawSprite();
         }
         finally { _loading = false; }
@@ -292,7 +295,8 @@ public sealed class FrmMonsterSpecies : EditorForm
     private void SaveSpecies(object? sender, EventArgs e)
     {
         var changed = _drafts.Values.Where(item => item.JsonData != _originals[item.Id]).ToArray();
-        if (changed.Any(item => !item.IsValid || item.TypeIds.Any(id => MonsterTypeDescriptor.Get(id) == null)))
+        if (changed.Any(item => !item.IsValid || item.TypeIds.Any(id => MonsterTypeDescriptor.Get(id) == null) ||
+            item.Learnset.Any(entry => MonsterMoveDescriptor.Get(entry.MoveId) == null)))
         {
             DarkMessageBox.ShowWarning(Strings.MonsterSpeciesEditor.Invalid, Text);
             return;

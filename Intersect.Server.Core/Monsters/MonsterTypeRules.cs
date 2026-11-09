@@ -16,7 +16,8 @@ public static class MonsterTypeRules
         if (!species.IsValid || species.TypeIds.Any(id => !exists(id)))
             throw new InvalidOperationException("A species needs a name, six positive stats, and at most two distinct existing types.");
     }
-    public static bool IsReferenced(Guid id, IEnumerable<MonsterSpeciesDescriptor> species, IEnumerable<MonsterTypeDescriptor> types) =>
+    public static bool IsReferenced(Guid id, IEnumerable<MonsterSpeciesDescriptor> species, IEnumerable<MonsterTypeDescriptor> types, IEnumerable<MonsterMoveDescriptor>? moves = null) =>
         species.Any(item => item.TypeIds?.Contains(id) == true) ||
-        types.Any(item => item.Id != id && item.Effectiveness?.ContainsKey(id) == true);
+        types.Any(item => item.Id != id && item.Effectiveness?.ContainsKey(id) == true) ||
+        moves?.Any(move => move.TypeId == id) == true;
 }

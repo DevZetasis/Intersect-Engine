@@ -28,6 +28,6 @@ public static partial class Strings
         public static LocalizedString Save = "Save";
         public static LocalizedString Cancel = "Cancel";
         public static LocalizedString DeletePrompt = "Permanently delete this species? This cannot be canceled.";
-        public static LocalizedString Invalid = "Enter a species name and positive HP, Attack, Defense, Special Attack, Special Defense, and Speed, with up to two distinct existing types.";
+        public static LocalizedString Invalid = "Enter a species name and positive HP, Attack, Defense, Special Attack, Special Defense, and Speed, with up to two distinct existing types and valid level/move learnset entries.";
     }
 }

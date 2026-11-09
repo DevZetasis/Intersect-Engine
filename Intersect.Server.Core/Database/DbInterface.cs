@@ -728,6 +728,9 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 MonsterTypeDescriptor.Lookup.Clear();
                 break;
+            case GameObjectType.MonsterMove:
+                MonsterMoveDescriptor.Lookup.Clear();
+                break;
             case GameObjectType.Npc:
                 NPCDescriptor.Lookup.Clear();
 
@@ -839,6 +842,12 @@ public static partial class DbInterface
                         foreach (var monsterType in context.MonsterTypes)
                         {
                             MonsterTypeDescriptor.Lookup.Set(monsterType.Id, monsterType);
+                        }
+                        break;
+                    case GameObjectType.MonsterMove:
+                        foreach (var monsterMove in context.MonsterMoves)
+                        {
+                            MonsterMoveDescriptor.Lookup.Set(monsterMove.Id, monsterMove);
                         }
                         break;
                     case GameObjectType.Npc:
@@ -1138,6 +1147,15 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 dbObj = new MonsterTypeDescriptor(predefinedid);
                 break;
+            case GameObjectType.MonsterMove:
+                dbObj = new MonsterMoveDescriptor(predefinedid)
+                {
+                    TypeId = MonsterTypeDescriptor.Lookup.Values.Cast<MonsterTypeDescriptor>().OrderBy(type => type.Name)
+                        .Select(type => type.Id).FirstOrDefault(),
+                };
+                if (((MonsterMoveDescriptor)dbObj).TypeId == Guid.Empty)
+                    throw new InvalidOperationException("Create a monster type before creating moves.");
+                break;
             case GameObjectType.Npc:
                 dbObj = new NPCDescriptor(predefinedid);
 
@@ -1247,6 +1265,10 @@ public static partial class DbInterface
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Add((MonsterTypeDescriptor)dbObj);
                         MonsterTypeDescriptor.Lookup.Set(dbObj.Id, dbObj);
+                        break;
+                    case GameObjectType.MonsterMove:
+                        context.MonsterMoves.Add((MonsterMoveDescriptor)dbObj);
+                        MonsterMoveDescriptor.Lookup.Set(dbObj.Id, dbObj);
                         break;
                     case GameObjectType.Npc:
                         context.Npcs.Add((NPCDescriptor)dbObj);
@@ -1372,6 +1394,8 @@ public static partial class DbInterface
                 switch (gameObject.Type)
                 {
                     case GameObjectType.Animation:
+                        if (context.MonsterMoves.Any(move => move.AnimationId == gameObject.Id))
+                            throw new InvalidOperationException("This animation is referenced by monster moves.");
                         context.Animations.Remove((AnimationDescriptor)gameObject);
 
                         break;
@@ -1388,9 +1412,14 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterType:
                         if (Intersect.Server.Monsters.MonsterTypeRules.IsReferenced(gameObject.Id,
-                                context.MonsterSpecies.AsNoTracking().ToArray(), context.MonsterTypes.AsNoTracking().ToArray()))
+                                context.MonsterSpecies.AsNoTracking().ToArray(), context.MonsterTypes.AsNoTracking().ToArray(), context.MonsterMoves.AsNoTracking().ToArray()))
                             throw new InvalidOperationException("This monster type is referenced and cannot be deleted.");
                         context.MonsterTypes.Remove((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterMove:
+                        if (Intersect.Server.Monsters.MonsterMoveRules.IsReferenced(gameObject.Id, context.MonsterSpecies.AsNoTracking().ToArray()))
+                            throw new InvalidOperationException("This monster move is referenced by species learnsets.");
+                        context.MonsterMoves.Remove((MonsterMoveDescriptor)gameObject);
                         break;
                     case GameObjectType.Npc:
                         context.Npcs.Remove((NPCDescriptor)gameObject);
@@ -1568,6 +1597,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Update((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterMove:
+                        context.MonsterMoves.Update((MonsterMoveDescriptor)gameObject);
                         break;
                     case GameObjectType.Npc:
                         context.Npcs.Update((NPCDescriptor)gameObject);
