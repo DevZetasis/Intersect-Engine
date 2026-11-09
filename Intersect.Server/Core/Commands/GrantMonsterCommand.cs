@@ -34,7 +34,7 @@ internal sealed class GrantMonsterCommand : ServerCommand
                 ? db.Players.Where(player => player.Id == parsedId).Select(player => player.Id).SingleOrDefault()
                 : db.Players.Where(player => player.Name == target).Select(player => player.Id).SingleOrDefault();
             if (ownerId == Guid.Empty) throw new InvalidOperationException("Character does not exist.");
-            var monster = MonsterRoster.CreateService().Grant(ownerId, speciesId, requestId, out var created);
+            var monster = MonsterRoster.CreateService(context.Logger).Grant(ownerId, speciesId, requestId, out var created);
             var outcome = created ? "Created monster" : "Existing monster (retry; placement unchanged)";
             Console.WriteLine($"{outcome} {monster.Id} for character {ownerId}: current location {monster.Location} slot {monster.Slot + 1}, revision {monster.Revision}. Request {requestId} is safe to retry.");
             if (Player.FindOnline(ownerId) is { } online) MonsterRoster.Send(online);

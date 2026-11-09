@@ -94,7 +94,7 @@ public static partial class DbInterface
         bool lazyLoading = false,
         bool autoDetectChanges = false,
         QueryTrackingBehavior? queryTrackingBehavior = default
-    ) => GameContext.Create(new DatabaseContextOptions
+    ) => ConfigureMonsterReferences(GameContext.Create(new DatabaseContextOptions
     {
         AutoDetectChanges = autoDetectChanges,
         ConnectionStringBuilder = Options.Instance.GameDatabase.Type.CreateConnectionStringBuilder(
@@ -108,7 +108,13 @@ public static partial class DbInterface
         LoggerFactory = CreateLoggerFactory<GameContext>(Options.Instance.GameDatabase),
         QueryTrackingBehavior = queryTrackingBehavior,
         ReadOnly = readOnly,
-    });
+    }));
+
+    private static GameContext ConfigureMonsterReferences(GameContext context)
+    {
+        context.NatureReferenceExists = id => Intersect.Server.Monsters.MonsterNatureReferences.IsAssigned(id, () => CreatePlayerContext());
+        return context;
+    }
 
     internal static LoggingContext CreateLoggingContext(
         bool readOnly = true,
@@ -1403,6 +1409,15 @@ public static partial class DbInterface
 
     public static void DeleteGameObject(IDatabaseObject gameObject)
     {
+        if (gameObject is MonsterNatureDescriptor)
+        {
+            lock (Intersect.Server.Monsters.MonsterTypeRules.ContentGate) DeleteGameObjectCore(gameObject);
+        }
+        else DeleteGameObjectCore(gameObject);
+    }
+
+    private static void DeleteGameObjectCore(IDatabaseObject gameObject)
+    {
         try
         {
             using (var context = CreateGameContext(readOnly: false))
@@ -1433,6 +1448,7 @@ public static partial class DbInterface
                         context.MonsterTypes.Remove((MonsterTypeDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterNature:
+                        Intersect.Server.Monsters.MonsterNatureReferences.EnsureUnreferenced(gameObject.Id, () => CreatePlayerContext());
                         context.MonsterNatures.Remove((MonsterNatureDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterMove:

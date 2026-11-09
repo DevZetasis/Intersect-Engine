@@ -2,6 +2,10 @@ using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Server.Database.PlayerData;
 using Intersect.Server.Database.PlayerData.Players;
 using Microsoft.EntityFrameworkCore;
+using Intersect.Config;
+using Intersect.Server.Monsters.Calculations;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Intersect.Server.Monsters;
 
@@ -12,12 +16,29 @@ public sealed class MonsterOwnershipService
     private readonly Func<PlayerContext> _createContext;
     private readonly Func<Guid, bool> _speciesExists;
     public int PartyCapacity { get; }
+    private readonly IMonsterRandom _random;
+    private readonly Func<IEnumerable<MonsterNatureDescriptor>> _natures;
+    private readonly MonsterBattleRules _rules;
+    private readonly ILogger _logger;
 
-    public MonsterOwnershipService(Func<PlayerContext> createContext, Func<Guid, bool> speciesExists, int partyCapacity)
+    public MonsterOwnershipService(Func<PlayerContext> createContext, Func<Guid, bool> speciesExists, int partyCapacity,
+        IMonsterRandom? random = null, Func<IEnumerable<MonsterNatureDescriptor>>? natures = null,
+        MonsterBattleRules? rules = null, ILogger? logger = null)
     {
         _createContext = createContext;
         _speciesExists = speciesExists;
         PartyCapacity = Math.Clamp(partyCapacity, 1, 64);
+        _random = random ?? new SystemMonsterRandom();
+        _natures = natures ?? (() => Array.Empty<MonsterNatureDescriptor>());
+        _rules = rules ?? MonsterBattleRules.Generation4;
+        _rules.Validate();
+        _createContext = () =>
+        {
+            var context = createContext();
+            context.MonsterRules = _rules;
+            return context;
+        };
+        _logger = logger ?? NullLogger.Instance;
     }
 
     private static object Gate(Guid ownerId) => Gates[(int)((uint)ownerId.GetHashCode() % (uint)Gates.Length)];
@@ -47,6 +68,7 @@ public sealed class MonsterOwnershipService
         created = false;
         if (ownerId == Guid.Empty || speciesId == Guid.Empty || requestId == Guid.Empty)
             throw new InvalidOperationException("Character, species, and request UUIDs are required.");
+        lock (MonsterTypeRules.ContentGate)
         lock (Gate(ownerId))
         {
             using var db = _createContext();
@@ -58,7 +80,9 @@ public sealed class MonsterOwnershipService
             var partySlot = FindSlot(owned, MonsterLocation.Party, PartyCapacity);
             var location = partySlot >= 0 ? MonsterLocation.Party : MonsterLocation.Storage;
             var slot = partySlot >= 0 ? partySlot : FindSlot(owned, MonsterLocation.Storage, int.MaxValue);
-            var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot);
+            var ivs = MonsterAttributeGeneration.GenerateIVs(_random);
+            var natureId = MonsterAttributeGeneration.SelectNature(_natures(), _random);
+            var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot, ivs, natureId);
             db.OwnedMonsters.Add(monster);
             try
             {
@@ -72,6 +96,8 @@ public sealed class MonsterOwnershipService
                 if (existing == null) throw;
                 return ValidateRetry(existing, ownerId, speciesId);
             }
+            if (natureId == null)
+                _logger.LogWarning("No positive-weight monster natures are available. Monster {MonsterId} was created neutral/unassigned; its IVs are preserved.", monster.Id);
             created = true;
             return monster.ToSummary();
         }
@@ -101,6 +127,22 @@ public sealed class MonsterOwnershipService
             if (slot < 0) throw new InvalidOperationException("Your monster party is full.");
             monster.Place(destination, slot);
             if (db.SaveChanges() <= 0) throw new InvalidOperationException("Monster placement was not committed.");
+        }
+    }
+
+    /// <summary>Internal progression seam, not a packet, reward or public editing command.</summary>
+    internal void SetEVs(Guid ownerId, Guid monsterId, Guid expectedRevision, MonsterStatValues evs)
+    {
+        MonsterStatCalculator.ValidateEVs(evs, _rules);
+        lock (Gate(ownerId))
+        {
+            using var db = _createContext();
+            var monster = db.OwnedMonsters.SingleOrDefault(item => item.OwnerPlayerId == ownerId && item.Id == monsterId)
+                ?? throw new InvalidOperationException("Monster is not in your collection.");
+            if (monster.Revision != expectedRevision) throw new InvalidOperationException("The collection changed. Please try again.");
+            if (monster.EVs == evs) return;
+            monster.SetEVs(evs, _rules);
+            if (db.SaveChanges() <= 0) throw new InvalidOperationException("Monster EV changes were not committed.");
         }
     }
 

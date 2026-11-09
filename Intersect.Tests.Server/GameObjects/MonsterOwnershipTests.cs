@@ -50,7 +50,7 @@ public class MonsterOwnershipTests
         _item = Guid.NewGuid();
         using var db = CreateContext();
         // Seed a pre-milestone database, then upgrade it. Never use application configuration.
-        var previous = db.Database.GetMigrations().Last(id => id != "20261108000000_AddOwnedMonsters");
+        var previous = db.Database.GetMigrations().Last(id => string.CompareOrdinal(id, "20261108000000_AddOwnedMonsters") < 0);
         db.GetService<IMigrator>().Migrate(previous);
         var first = new Player { Name = "Trainer One" };
         var second = new Player { Name = "Trainer Two" };
@@ -241,7 +241,7 @@ public class MonsterOwnershipTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsters();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));

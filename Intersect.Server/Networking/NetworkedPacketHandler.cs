@@ -937,6 +937,11 @@ internal sealed partial class NetworkedPacketHandler
 
                     break;
                 case GameObjectType.MonsterNature:
+                    if (MonsterNatureReferences.IsAssigned(id, () => DbInterface.CreatePlayerContext()))
+                    {
+                        PacketSender.SendError(client, "This nature is assigned to owned monsters, including offline owners, and cannot be deleted.", "Monster Nature");
+                        return;
+                    }
                     obj = MonsterNatureDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterMove:

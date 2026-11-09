@@ -63,12 +63,79 @@ namespace Intersect.Server.Migrations.MySql.Player
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");
 
+                    b.Property<int>("IvHP")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("IvAttack")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("IvDefense")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("IvSpecialAttack")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("IvSpecialDefense")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("IvSpeed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvHP")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvAttack")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvDefense")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvSpecialAttack")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvSpecialDefense")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("EvSpeed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid?>("NatureId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
                     b.HasKey("Id");
+                      b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();
                     b.HasIndex("OwnerPlayerId", "Location", "Slot").IsUnique();
                     b.ToTable("OwnedMonsters", t =>
                     {
-                        t.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
+                        t.HasCheckConstraint("CK_OwnedMonsters_IVs", "IvHP BETWEEN 0 AND 31 AND IvAttack BETWEEN 0 AND 31 AND IvDefense BETWEEN 0 AND 31 AND IvSpecialAttack BETWEEN 0 AND 31 AND IvSpecialDefense BETWEEN 0 AND 31 AND IvSpeed BETWEEN 0 AND 31");
+                          t.HasCheckConstraint("CK_OwnedMonsters_EVs", "EvHP BETWEEN 0 AND 255 AND EvAttack BETWEEN 0 AND 255 AND EvDefense BETWEEN 0 AND 255 AND EvSpecialAttack BETWEEN 0 AND 255 AND EvSpecialDefense BETWEEN 0 AND 255 AND EvSpeed BETWEEN 0 AND 255");
+                          t.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
                         t.HasCheckConstraint("CK_OwnedMonsters_Progression", "Level >= 1 AND Experience >= 0");
                     });
                     b.HasOne("Intersect.Server.Entities.Player", null)

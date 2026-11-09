@@ -8,6 +8,13 @@ public static partial class Strings
     public sealed partial class CommandsNamespace
     {
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public readonly LocaleCommand InspectMonster = new()
+        {
+            Name = "inspectmonster", Help = "Read-only persistent monster inspection (server console only)",
+            Description = "inspectmonster <individual-monster-UUID>. Displays nature, IVs, EVs and calculated stats without changing data.",
+        };
+
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public readonly LocaleCommand GrantMonster = new()
         {
             Name = "grantmonster", Help = "Grants one persistent monster (server console only)",

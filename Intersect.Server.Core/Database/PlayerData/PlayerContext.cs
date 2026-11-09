@@ -77,8 +77,23 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
         monsters.HasIndex(monster => monster.GrantRequestId).IsUnique();
         monsters.HasIndex(monster => new { monster.OwnerPlayerId, monster.Location, monster.Slot }).IsUnique();
         monsters.Property(monster => monster.Revision).IsConcurrencyToken();
+        monsters.HasIndex(monster => monster.NatureId);
+        monsters.Property(monster => monster.IvHP).HasDefaultValue(0);
+        monsters.Property(monster => monster.IvAttack).HasDefaultValue(0);
+        monsters.Property(monster => monster.IvDefense).HasDefaultValue(0);
+        monsters.Property(monster => monster.IvSpecialAttack).HasDefaultValue(0);
+        monsters.Property(monster => monster.IvSpecialDefense).HasDefaultValue(0);
+        monsters.Property(monster => monster.IvSpeed).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvHP).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvAttack).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvDefense).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvSpecialAttack).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvSpecialDefense).HasDefaultValue(0);
+        monsters.Property(monster => monster.EvSpeed).HasDefaultValue(0);
         monsters.ToTable("OwnedMonsters", table =>
         {
+            table.HasCheckConstraint("CK_OwnedMonsters_IVs", "IvHP BETWEEN 0 AND 31 AND IvAttack BETWEEN 0 AND 31 AND IvDefense BETWEEN 0 AND 31 AND IvSpecialAttack BETWEEN 0 AND 31 AND IvSpecialDefense BETWEEN 0 AND 31 AND IvSpeed BETWEEN 0 AND 31");
+            table.HasCheckConstraint("CK_OwnedMonsters_EVs", "EvHP BETWEEN 0 AND 255 AND EvAttack BETWEEN 0 AND 255 AND EvDefense BETWEEN 0 AND 255 AND EvSpecialAttack BETWEEN 0 AND 255 AND EvSpecialDefense BETWEEN 0 AND 255 AND EvSpeed BETWEEN 0 AND 255");
             table.HasCheckConstraint("CK_OwnedMonsters_Placement", "Slot >= 0 AND Location IN (0, 1)");
             table.HasCheckConstraint("CK_OwnedMonsters_Progression", "Level >= 1 AND Experience >= 0");
         });

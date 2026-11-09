@@ -7,12 +7,16 @@ namespace Intersect.Server.Database.GameData;
 
 public abstract partial class GameContext
 {
+    public Func<Guid, bool>? NatureReferenceExists { get; set; }
     private void ValidateMonsterContent()
     {
         ChangeTracker.DetectChanges();
         foreach (var entry in ChangeTracker.Entries<MonsterNatureDescriptor>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
             MonsterNatureRules.Validate(entry.Entity);
+        foreach (var entry in ChangeTracker.Entries<MonsterNatureDescriptor>().Where(entry => entry.State == EntityState.Deleted))
+            if (NatureReferenceExists?.Invoke(entry.Entity.Id) == true)
+                throw new InvalidOperationException("This nature is assigned to owned monsters and cannot be deleted.");
         var changed = ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor ||
                 (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor)).ToArray();
