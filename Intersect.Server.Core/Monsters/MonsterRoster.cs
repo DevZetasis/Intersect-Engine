@@ -23,10 +23,16 @@ public static class MonsterRoster
         try
         {
             var service = CreateService();
+            OwnedMonsterSummary[] monsters;
+            lock (MonsterTypeRules.ContentGate)
+                monsters = service.GetOwned(player.Id, monster => MonsterRosterDetails.Create(monster,
+                    MonsterSpeciesDescriptor.Get(monster.SpeciesId),
+                    monster.NatureId is { } natureId ? MonsterNatureDescriptor.Get(natureId) : null,
+                    Options.Instance.Monsters.Battle));
             player.SendPacket(new OwnedMonstersPacket
             {
                 PlayerId = player.Id, PartyCapacity = service.PartyCapacity,
-                Monsters = service.GetOwned(player.Id), Message = message,
+                Monsters = monsters, Message = message,
             });
         }
         catch (Exception exception)

@@ -14,4 +14,6 @@ public sealed class OwnedMonsterSummary
     [Key(5)] public MonsterLocation Location { get; set; }
     [Key(6)] public int Slot { get; set; }
     [Key(7)] public Guid Revision { get; set; }
+    // Append only: older snapshots deserialize with no details, and older readers can skip this key.
+    [Key(8)] public OwnedMonsterDetails? Details { get; set; }
 }

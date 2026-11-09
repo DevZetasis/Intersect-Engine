@@ -43,7 +43,7 @@ public sealed class MonsterOwnershipService
 
     private static object Gate(Guid ownerId) => Gates[(int)((uint)ownerId.GetHashCode() % (uint)Gates.Length)];
 
-    public OwnedMonsterSummary[] GetOwned(Guid ownerId)
+    public OwnedMonsterSummary[] GetOwned(Guid ownerId, Func<MonsterInstance, OwnedMonsterDetails>? describe = null)
     {
         lock (Gate(ownerId))
         {
@@ -55,7 +55,12 @@ public sealed class MonsterOwnershipService
             if (overflow.Length > 0 && db.SaveChanges() <= 0)
                 throw new InvalidOperationException("Monster placement was not committed.");
             return owned.OrderBy(monster => monster.Location).ThenBy(monster => monster.Slot)
-                .Select(monster => monster.ToSummary()).ToArray();
+                .Select(monster =>
+                {
+                    var summary = monster.ToSummary();
+                    summary.Details = describe?.Invoke(monster);
+                    return summary;
+                }).ToArray();
         }
     }
 

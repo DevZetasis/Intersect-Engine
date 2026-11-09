@@ -7,6 +7,7 @@ using Intersect.Server.Database;
 using Intersect.Server.Database.GameData;
 using Intersect.Server.Database.PlayerData;
 using Intersect.Server.Database.PlayerData.Security;
+using Intersect.Server.Database.PlayerData.Players;
 using Intersect.Server.Entities;
 using Intersect.Server.Monsters;
 using Intersect.Server.Monsters.Calculations;
@@ -249,6 +250,58 @@ public class MonsterIndividualTests
         Assert.That(sql, Does.Contain("ADD `IvHP` int NOT NULL DEFAULT 0"));
         Assert.That(sql, Does.Not.Contain("DROP TABLE"));
     }
+    [Test]
+    public void RosterDetailsAreOwnerScopedPersistedAndMatchInspectionCalculations()
+    {
+        var nature = new MonsterNatureDescriptor(Guid.NewGuid())
+        { Name = "Custom 15.5%", Modifiers = new() { Increase = new() { Stat = MonsterStat.Attack, Percentage = 15.5m } } };
+        var service = Service(new ControlledMonsterRandom(0, 31, 1, 2, 3, 4, 0), [nature]);
+        var created = service.Grant(_owner, _species, Guid.NewGuid());
+        var species = new MonsterSpeciesDescriptor(_species) { Name = "Roster species" };
+        var calls = 0;
+        OwnedMonsterDetails Describe(MonsterInstance monster)
+        {
+            calls++;
+            return MonsterRosterDetails.Create(monster, species, nature, MonsterBattleRules.Generation4);
+        }
+        Assert.That(service.GetOwned(Guid.NewGuid(), Describe), Is.Empty);
+        Assert.That(calls, Is.Zero, "Foreign rows must never reach the detail mapper.");
+        var summary = service.GetOwned(_owner, Describe).Single();
+        Assert.That(summary.Details!.NatureId, Is.EqualTo(nature.Id));
+        Assert.That(summary.Details.NatureName, Is.EqualTo(nature.Name));
+        Assert.That(summary.Details.IVs, Is.EqualTo(new long[] { 0, 31, 1, 2, 3, 4 }));
+        Assert.That(summary.Details.EVs, Is.EqualTo(new long[6]));
+        using var db = Context();
+        var loaded = db.OwnedMonsters.Single();
+        var expected = MonsterStatCalculator.Calculate(species.BaseStats, loaded.Level, loaded.IVs, loaded.EVs, nature, MonsterBattleRules.Generation4).ToArray();
+        Assert.That(summary.Details.CalculatedStats, Is.EqualTo(expected));
+        Assert.That(MonsterDiagnostics.Describe(loaded, species, nature, MonsterBattleRules.Generation4), Does.Contain(string.Join(" / ", expected)));
+        var packet = new Intersect.Network.Packets.Server.OwnedMonstersPacket { PlayerId = _owner, Monsters = [summary] };
+        var bytes = MessagePack.MessagePackSerializer.Serialize(packet);
+        var roundTrip = MessagePack.MessagePackSerializer.Deserialize<Intersect.Network.Packets.Server.OwnedMonstersPacket>(bytes);
+        Assert.That(roundTrip.Monsters.Single().Details!.CalculatedStats, Is.EqualTo(expected));
+        service.Move(_owner, created.Id, created.Revision, MonsterLocation.Storage);
+        var reconnected = Service(new ControlledMonsterRandom()).GetOwned(_owner, Describe).Single();
+        Assert.That(reconnected.Location, Is.EqualTo(MonsterLocation.Storage));
+        Assert.That(reconnected.Details!.IVs, Is.EqualTo(summary.Details.IVs));
+        Assert.That(reconnected.Details.CalculatedStats, Is.EqualTo(expected));
+        var missing = MonsterRosterDetails.Create(loaded, null, nature, MonsterBattleRules.Generation4);
+        Assert.That(missing.CalculatedStats, Is.Null);
+        Assert.That(missing.CalculationError, Is.Not.Empty);
+    }
+
+    [Test]
+    public void NeutralRosterDetailsDoNotInventAnAssignedNature()
+    {
+        Service(new ControlledMonsterRandom(1, 2, 3, 4, 5, 6)).Grant(_owner, _species, Guid.NewGuid());
+        using var db = Context();
+        var details = MonsterRosterDetails.Create(db.OwnedMonsters.Single(), new MonsterSpeciesDescriptor(_species), null, MonsterBattleRules.Generation4);
+        Assert.That(details.NatureId, Is.Null);
+        Assert.That(details.NatureName, Is.Null);
+        Assert.That(details.CalculatedStats, Has.Length.EqualTo(6));
+        Assert.That(details.CalculationError, Is.Null);
+    }
+
     private sealed class OfflineMySql(DatabaseContextOptions options) : PlayerContext(options)
     {
         public override DatabaseType DatabaseType => DatabaseType.MySql;

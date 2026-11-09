@@ -240,15 +240,14 @@ public partial class MenuContainer : Panel
             x += child.OuterWidth;
         }
 
-        SizeToChildren(recursive: true);
+        FitButtonsToViewport(this);
 
         SkipRender();
         RunOnMainThread(
             action: () =>
             {
                 LoadJsonUi(GameContentManager.UI.InGame, Graphics.Renderer!.GetResolutionString());
-                // Make room for Monsters without resizing the existing configured icons/children.
-                SizeToChildren(resizeX: true, resizeY: false, recursive: false);
+                FitButtonsToViewport(this);
             }
         );
 

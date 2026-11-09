@@ -23,6 +23,8 @@ public class MonsterRosterLayoutTests
     [TestCase(800, 600)]
     [TestCase(1024, 768)]
     [TestCase(1280, 720)]
+    [TestCase(1366, 768)]
+    [TestCase(1600, 900)]
     [TestCase(1920, 1080)]
     public void RosterHasReadableRowsAndControlsInsideViewport(int width, int height)
     {
@@ -54,6 +56,8 @@ public class MonsterRosterLayoutTests
                 Monsters = [new() { Id = Guid.NewGuid(), SpeciesId = species.Id, Nickname = "Test Monster", Level = 12, Location = MonsterLocation.Party, Slot = 0 }],
             };
             var first = player.MonsterRoster.Monsters[0];
+            first.Details = new OwnedMonsterDetails { NatureId = Guid.NewGuid(), NatureName = "Patient custom nature",
+                IVs = [1, 2, 3, 4, 5, 6], EVs = [0, 4, 8, 12, 16, 20], CalculatedStats = [100, 101, 102, 103, 104, 105] };
             player.MonsterRoster.Monsters = new[] { first }.Concat(Enumerable.Range(0, 19).Select(slot => new OwnedMonsterSummary
             {
                 Id = Guid.NewGuid(), SpeciesId = species.Id, Level = 1, Location = MonsterLocation.Storage, Slot = slot,
@@ -92,8 +96,8 @@ public class MonsterRosterLayoutTests
             for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
             var sprite = Descendants(window).OfType<ImagePanel>().Single(p => p.Name == "MonsterSprite");
             Assert.That(sprite.Texture, Is.Not.Null);
-            Assert.That(sprite.Width, Is.EqualTo(72));
-            Assert.That(sprite.Height, Is.EqualTo(144));
+            Assert.That(sprite.Width, Is.EqualTo(48));
+            Assert.That(sprite.Height, Is.EqualTo(96));
             foreach (var control in Descendants(window).Where(c => c.Name is "SelectedName" or "SelectedSpecies" or "MonsterSprite" or "RefreshButton" or "MoveButton"))
             {
                 var topLeft = control.ToCanvas(Point.Empty);
@@ -105,6 +109,23 @@ public class MonsterRosterLayoutTests
                 Assert.That(bottomRight.Y, Is.LessThanOrEqualTo(window.ToCanvas(window.Size).Y), control.Name);
             }
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").Text, Is.EqualTo("Store in storage"));
+            Label Named(string name) => Descendants(window).OfType<Label>().Single(label => label.Name == name);
+            Assert.That(Named("SelectedNature").Text, Does.Contain("Patient custom nature"));
+            Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("100"));
+            Assert.That(Named("Stat5Cell2").Text, Is.EqualTo("6"));
+            Assert.That(Named("Stat5Cell3").Text, Is.EqualTo("20"));
+            Assert.That(Named("TotalEvs").Text, Does.Contain("60"));
+            list.SelectedRow = list[1];
+            Assert.That(Named("CalculationStatus").Text, Does.Contain("Details unavailable"));
+            // A neutral storage monster replaces the party monster's details without stale values.
+            var storedEntry = (OwnedMonsterSummary)list[1].UserData!;
+            storedEntry.Details = new OwnedMonsterDetails { IVs = new long[6], EVs = new long[6], CalculatedStats = [11, 5, 5, 5, 5, 5] };
+            list.SelectedRow = row;
+            list.SelectedRow = list[1];
+            Assert.That(Named("SelectedNature").Text, Does.Contain("Neutral / Unassigned"));
+            Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("11"));
+            Assert.That(Named("SelectedIdentity").Text, Does.Contain("Storage #1"));
+            list.SelectedRow = row;
             // A fresh server snapshot retains selection and updates its action label.
             var entry = player.MonsterRoster.Monsters[0];
             entry.Location = MonsterLocation.Storage;
@@ -112,6 +133,59 @@ public class MonsterRosterLayoutTests
             window.Update();
             Assert.That(list.SelectedRow?.UserData, Is.SameAs(entry));
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").Text, Is.EqualTo("Add to party"));
+            player.MonsterRoster = new OwnedMonstersPacket { PlayerId = player.Id, Monsters = [] };
+            window.Update();
+            Assert.That(list.RowCount, Is.Zero);
+            Assert.That(Named("SelectedName").Text, Is.Empty);
+            Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("—"));
+            Assert.That(sprite.Texture, Is.Null);
+            Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").IsDisabled, Is.True);
+
+            // Reproduce the shipped MenuContainer layout: eight icon buttons and a
+            // legacy 6x6 Monsters button in the old 324px parent. This is the bottom-right HUD.
+            var menu = new Panel(canvas, "TestMenu") { Padding = new Padding(4), Width = 324, Height = 44,
+                Alignment = [Alignments.Bottom, Alignments.Right], RestrictToParent = true };
+            var icons = Enumerable.Range(0, 8).Select(i => new Panel(menu, "Icon" + i)
+            {
+                Dock = Pos.Left, Size = new Point(36, 36), MinimumSize = new Point(36, 36), MaximumSize = new Point(36, 36),
+                Margin = new Margin(i == 0 ? 0 : 4, 0, 0, 0),
+            }).ToArray();
+            var monstersButton = new Button(menu, "MonstersButton") { Dock = Pos.Left, Size = new Point(6, 6),
+                Margin = new Margin(4, 0, 0, 0), Text = "Monsters", Font = content.Font };
+            Assert.That(menu.Width, Is.EqualTo(324));
+            Assert.That(monstersButton.Width, Is.EqualTo(6));
+            Intersect.Client.Interface.Game.MenuContainer.FitButtonsToViewport(menu);
+            Assert.That(monstersButton.Width, Is.GreaterThanOrEqualTo(80));
+            Assert.That(monstersButton.Height, Is.GreaterThanOrEqualTo(36));
+            Assert.That(monstersButton.FontSize, Is.GreaterThanOrEqualTo(14));
+            menu.Alignment = [];
+            menu.MoveTo(100, 100);
+            Intersect.Client.Interface.Game.MenuContainer.FitButtonsToViewport(menu);
+            Assert.That(menu.X, Is.EqualTo(100));
+            Assert.That(menu.Y, Is.EqualTo(100));
+            menu.RestrictToParent = false; // An off-screen saved position is corrected even if this was disabled.
+            menu.SetPosition(width + 100, height + 100);
+            Intersect.Client.Interface.Game.MenuContainer.FitButtonsToViewport(menu);
+            Assert.That(menu.Right, Is.LessThanOrEqualTo(width - 4));
+            menu.Alignment = [Alignments.Bottom, Alignments.Right];
+            menu.AlignmentTranslation = new Point(1000, 1000);
+            foreach (var viewport in new[] { new Point(width, height), new Point(Math.Max(640, width / 2), Math.Max(360, height / 2)), new Point(width, height) })
+            {
+                canvas.Size = viewport;
+                menu.ProcessAlignments();
+                for (var i = 0; i < 8; i++)
+                {
+                    Intersect.Client.Interface.Game.MenuContainer.FitButtonsToViewport(menu);
+                    queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]);
+                }
+                Assert.That(menu.X, Is.GreaterThanOrEqualTo(4));
+                Assert.That(menu.Y, Is.GreaterThanOrEqualTo(4));
+                Assert.That(menu.Right, Is.LessThanOrEqualTo(viewport.X - 4));
+                Assert.That(menu.Bottom, Is.LessThanOrEqualTo(viewport.Y - 4));
+                Assert.That(monstersButton.Right, Is.LessThanOrEqualTo(menu.Width - 4));
+                Assert.That(icons.All(icon => icon.Width == 36 && icon.Height == 36), Is.True);
+            }
+
         }
         finally
         {
