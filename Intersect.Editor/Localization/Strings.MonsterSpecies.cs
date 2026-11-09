@@ -15,6 +15,8 @@ public static partial class Strings
         public static LocalizedString HP = "Base HP";
         public static LocalizedString Attack = "Base Attack";
         public static LocalizedString Defense = "Base Defense";
+        public static LocalizedString SpecialAttack = "Base Special Attack";
+        public static LocalizedString SpecialDefense = "Base Special Defense";
         public static LocalizedString Speed = "Base Speed";
         public static LocalizedString New = "New";
         public static LocalizedString Copy = "Copy";
@@ -24,6 +26,6 @@ public static partial class Strings
         public static LocalizedString Save = "Save";
         public static LocalizedString Cancel = "Cancel";
         public static LocalizedString DeletePrompt = "Permanently delete this species? This cannot be canceled.";
-        public static LocalizedString Invalid = "Enter a species name and positive HP, Attack, Defense, and Speed.";
+        public static LocalizedString Invalid = "Enter a species name and positive HP, Attack, Defense, Special Attack, Special Defense, and Speed.";
     }
 }

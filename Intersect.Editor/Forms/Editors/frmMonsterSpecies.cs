@@ -23,6 +23,8 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkNumericUpDown _hp = StatInput();
     private readonly DarkNumericUpDown _attack = StatInput();
     private readonly DarkNumericUpDown _defense = StatInput();
+    private readonly DarkNumericUpDown _specialAttack = StatInput();
+    private readonly DarkNumericUpDown _specialDefense = StatInput();
     private readonly DarkNumericUpDown _speed = StatInput();
     private readonly PictureBox _preview = new() { Size = new Size(96, 96), BackColor = System.Drawing.Color.Black };
     private readonly TableLayoutPanel _fields = new() { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12), AutoScroll = true };
@@ -33,7 +35,7 @@ public sealed class FrmMonsterSpecies : EditorForm
     public FrmMonsterSpecies()
     {
         Text = Strings.MonsterSpeciesEditor.Menu;
-        Size = new Size(800, 660);
+        Size = new Size(800, 730);
         MinimumSize = new Size(720, 580);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = System.Drawing.Color.FromArgb(45, 45, 48);
@@ -52,7 +54,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         listPanel.Controls.Add(_speciesList);
         listPanel.Controls.Add(tools);
 
-        _fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
+        _fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
         _fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddField(Strings.MonsterSpeciesEditor.Id, _id);
         AddField(Strings.MonsterSpeciesEditor.Name, _name);
@@ -63,6 +65,8 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.HP, _hp);
         AddField(Strings.MonsterSpeciesEditor.Attack, _attack);
         AddField(Strings.MonsterSpeciesEditor.Defense, _defense);
+        AddField(Strings.MonsterSpeciesEditor.SpecialAttack, _specialAttack);
+        AddField(Strings.MonsterSpeciesEditor.SpecialDefense, _specialDefense);
         AddField(Strings.MonsterSpeciesEditor.Speed, _speed);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(5) };
@@ -78,7 +82,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         _description.TextChanged += EditFields;
         _folder.TextChanged += EditFields;
         _sprite.SelectedIndexChanged += EditFields;
-        foreach (var stat in new[] { _hp, _attack, _defense, _speed }) stat.ValueChanged += EditFields;
+        foreach (var stat in new[] { _hp, _attack, _defense, _specialAttack, _specialDefense, _speed }) stat.ValueChanged += EditFields;
         FormClosed += (_, _) => Globals.CurrentEditor = -1;
     }
 
@@ -172,6 +176,8 @@ public sealed class FrmMonsterSpecies : EditorForm
             _hp.Value = _selected.BaseStats.HP;
             _attack.Value = _selected.BaseStats.Attack;
             _defense.Value = _selected.BaseStats.Defense;
+            _specialAttack.Value = _selected.BaseStats.SpecialAttack;
+            _specialDefense.Value = _selected.BaseStats.SpecialDefense;
             _speed.Value = _selected.BaseStats.Speed;
             DrawSprite();
         }
@@ -188,6 +194,8 @@ public sealed class FrmMonsterSpecies : EditorForm
         _selected.BaseStats.HP = (int)_hp.Value;
         _selected.BaseStats.Attack = (int)_attack.Value;
         _selected.BaseStats.Defense = (int)_defense.Value;
+        _selected.BaseStats.SpecialAttack = (int)_specialAttack.Value;
+        _selected.BaseStats.SpecialDefense = (int)_specialDefense.Value;
         _selected.BaseStats.Speed = (int)_speed.Value;
         _speciesList.UpdateText(_selected.Name);
         if (sender == _sprite) DrawSprite();

@@ -32,7 +32,7 @@ public class MonsterSpeciesTests
         Description = "A configurable species.",
         Sprite = "test.png",
         Folder = "Test Species",
-        BaseStats = new MonsterBaseStats { HP = 30, Attack = 12, Defense = 9, Speed = 15 },
+        BaseStats = new MonsterBaseStats { HP = 30, Attack = 12, Defense = 9, SpecialAttack = 27, SpecialDefense = 18, Speed = 15 },
     };
 
     [Test]
@@ -58,6 +58,8 @@ public class MonsterSpeciesTests
         draft.MakeBackup();
         draft.Name = "Unsaved";
         draft.BaseStats.HP = 999;
+        draft.BaseStats.SpecialAttack = 888;
+        draft.BaseStats.SpecialDefense = 777;
         Assert.That(source.JsonData, Is.EqualTo(before));
         draft.RestoreBackup();
         Assert.That(draft.JsonData, Is.EqualTo(before));
@@ -75,9 +77,61 @@ public class MonsterSpeciesTests
         Assert.That(destination.TimeCreated, Is.EqualTo(creationTime));
         Assert.That(destination.BaseStatsJson, Is.EqualTo(source.BaseStatsJson));
         destination.BaseStats.HP++;
+        destination.BaseStats.SpecialAttack++;
+        destination.BaseStats.SpecialDefense++;
         Assert.That(source.BaseStats.HP, Is.EqualTo(30));
+        Assert.That(source.BaseStats.SpecialAttack, Is.EqualTo(27));
+        Assert.That(source.BaseStats.SpecialDefense, Is.EqualTo(18));
         destination.BaseStatsJson = "{\"HP\":20,\"Attack\":5,\"Defense\":6}";
         Assert.That(destination.BaseStats.Speed, Is.EqualTo(1), "New/missing stat fields have defaults.");
+    }
+
+    [Test]
+    public void SixStatsHavePositiveDefaultsAndRejectNonPositiveValues()
+    {
+        var stats = new MonsterSpeciesDescriptor().BaseStats;
+        var names = new[] { "HP", "Attack", "Defense", "SpecialAttack", "SpecialDefense", "Speed" };
+        Assert.That(typeof(MonsterBaseStats).GetProperties().Where(p => p.PropertyType == typeof(int)).Select(p => p.Name),
+            Is.EquivalentTo(names));
+        foreach (var name in names)
+        {
+            var property = typeof(MonsterBaseStats).GetProperty(name)!;
+            Assert.That(property.GetValue(stats), Is.EqualTo(1));
+            foreach (var invalid in new[] { 0, -1 })
+            {
+                property.SetValue(stats, invalid);
+                Assert.That(stats.IsValid, Is.False, name);
+            }
+            property.SetValue(stats, int.MaxValue);
+            Assert.That(stats.IsValid, Is.True, name);
+        }
+    }
+
+    [Test]
+    public void LegacyFourStatJsonPreservesIdentityAndValuesWithSpecialStatDefaults()
+    {
+        const string legacyStats = "{\"HP\":73,\"Attack\":31,\"Defense\":29,\"Speed\":47}";
+        var species = Species();
+        var id = species.Id;
+        species.BaseStatsJson = legacyStats;
+        Assert.That((species.BaseStats.HP, species.BaseStats.Attack, species.BaseStats.Defense, species.BaseStats.Speed),
+            Is.EqualTo((73, 31, 29, 47)));
+        Assert.That((species.BaseStats.SpecialAttack, species.BaseStats.SpecialDefense), Is.EqualTo((1, 1)));
+        // Content packets and editor paste use Load/PopulateObject, rather than the DB string setter.
+        species.BaseStats.SpecialAttack = 99;
+        species.BaseStats.SpecialDefense = 98;
+        species.Load("{\"BaseStats\":" + legacyStats + "}");
+        Assert.That(species.Id, Is.EqualTo(id));
+        Assert.That((species.BaseStats.HP, species.BaseStats.Attack, species.BaseStats.Defense, species.BaseStats.Speed),
+            Is.EqualTo((73, 31, 29, 47)));
+        Assert.That((species.BaseStats.SpecialAttack, species.BaseStats.SpecialDefense), Is.EqualTo((1, 1)));
+        Assert.That(species.IsValid, Is.True);
+        species.BaseStats.SpecialAttack = 52;
+        species.BaseStats.SpecialDefense = 54;
+        var reloaded = new MonsterSpeciesDescriptor(id);
+        reloaded.Load(species.JsonData);
+        Assert.That(reloaded.Id, Is.EqualTo(id));
+        Assert.That(reloaded.BaseStatsJson, Is.EqualTo(species.BaseStatsJson));
     }
 
     [Test]
@@ -170,6 +224,59 @@ public class MonsterSpeciesTests
     }
 
     [Test]
+    public void LegacySqliteSpeciesIsNotRewrittenOnReadAndCanSaveSixStats()
+    {
+        Options.EnsureCreated();
+        var directory = Path.Combine(Path.GetTempPath(), "Intersect-SixStats-" + Guid.NewGuid());
+        Directory.CreateDirectory(directory);
+        var options = new DatabaseContextOptions
+        {
+            DatabaseType = DatabaseType.Sqlite, AutoDetectChanges = true,
+            ConnectionStringBuilder = new SqliteConnectionStringBuilder
+            {
+                DataSource = Path.Combine(directory, "gamedata.db"), Pooling = false,
+            },
+        };
+        const string legacy = "{\"HP\":73,\"Attack\":31,\"Defense\":29,\"Speed\":47}";
+        var species = Species();
+        try
+        {
+            using (var db = new SqliteGameContext(options))
+            {
+                db.Database.EnsureCreated();
+                db.MonsterSpecies.Add(species);
+                db.SaveChanges();
+                // Store the exact original four-field payload, bypassing current serialization.
+                db.Database.ExecuteSqlInterpolated($"UPDATE MonsterSpecies SET BaseStats = {legacy}");
+            }
+            using (var db = new SqliteGameContext(options))
+            {
+                var loaded = db.MonsterSpecies.Single();
+                Assert.That(loaded.Id, Is.EqualTo(species.Id));
+                Assert.That((loaded.BaseStats.HP, loaded.BaseStats.Attack, loaded.BaseStats.Defense, loaded.BaseStats.Speed),
+                    Is.EqualTo((73, 31, 29, 47)));
+                Assert.That((loaded.BaseStats.SpecialAttack, loaded.BaseStats.SpecialDefense), Is.EqualTo((1, 1)));
+                db.Database.OpenConnection();
+                using var command = db.Database.GetDbConnection().CreateCommand();
+                command.CommandText = "SELECT BaseStats FROM MonsterSpecies";
+                Assert.That(command.ExecuteScalar(), Is.EqualTo(legacy), "Reading does not rewrite stored content.");
+                loaded.BaseStats.SpecialAttack = 81;
+                loaded.BaseStats.SpecialDefense = 82;
+                db.SaveChanges();
+            }
+            using (var db = new SqliteGameContext(options))
+            {
+                var loaded = db.MonsterSpecies.Single();
+                Assert.That(loaded.Id, Is.EqualTo(species.Id));
+                Assert.That((loaded.BaseStats.HP, loaded.BaseStats.Attack, loaded.BaseStats.Defense,
+                        loaded.BaseStats.SpecialAttack, loaded.BaseStats.SpecialDefense, loaded.BaseStats.Speed),
+                    Is.EqualTo((73, 31, 29, 81, 82, 47)));
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test]
     public void SqliteUpgradeCrudAndReloadPreserveSpeciesAndLegacyContent()
     {
         Options.EnsureCreated();
@@ -208,6 +315,8 @@ public class MonsterSpeciesTests
                 Assert.That(loaded.JsonData, Is.EqualTo(species.JsonData));
                 loaded.Name = "Edited Species";
                 loaded.BaseStats.Attack = 42;
+                loaded.BaseStats.SpecialAttack = 64;
+                loaded.BaseStats.SpecialDefense = 72;
                 db.SaveChanges();
             }
             using (var db = new SqliteGameContext(options))
@@ -216,6 +325,8 @@ public class MonsterSpeciesTests
                 Assert.That(loaded.Id, Is.EqualTo(species.Id));
                 Assert.That(loaded.Name, Is.EqualTo("Edited Species"));
                 Assert.That(loaded.BaseStats.Attack, Is.EqualTo(42));
+                Assert.That(loaded.BaseStats.SpecialAttack, Is.EqualTo(64));
+                Assert.That(loaded.BaseStats.SpecialDefense, Is.EqualTo(72));
                 Assert.That(db.Npcs.Single(n => n.Id == npcId).Level, Is.EqualTo(7));
                 Assert.That(db.Items.Single(i => i.Id == itemId).Name, Is.EqualTo("Existing Item"));
                 Assert.That(db.Spells.Single(s => s.Id == spellId).Name, Is.EqualTo("Existing Spell"));
