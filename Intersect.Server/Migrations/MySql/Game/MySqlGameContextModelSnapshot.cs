@@ -452,9 +452,44 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.Property<long>("TimeCreated")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("TypeIdsJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Types");
+
                     b.HasKey("Id");
 
                     b.ToTable("MonsterSpecies");
+                });
+
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterTypeDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("EffectivenessJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Effectiveness");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("longtext")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("DisplayColor")
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterTypes");
                 });
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.NPCs.NPCDescriptor", b =>

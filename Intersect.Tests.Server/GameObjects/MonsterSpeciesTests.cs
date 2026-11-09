@@ -202,7 +202,7 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterTypes().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
         Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");
@@ -297,7 +297,7 @@ public class MonsterSpeciesTests
             var mapId = Guid.NewGuid();
             using (var db = new SqliteGameContext(options))
             {
-                var previous = db.Database.GetMigrations().Last(id => id != MigrationId);
+                var previous = db.Database.GetMigrations().Last(id => string.CompareOrdinal(id, MigrationId) < 0);
                 db.GetService<IMigrator>().Migrate(previous);
                 db.Npcs.Add(new NPCDescriptor(npcId) { Name = "Existing NPC", Level = 7 });
                 db.Items.Add(new ItemDescriptor(itemId) { Name = "Existing Item" });

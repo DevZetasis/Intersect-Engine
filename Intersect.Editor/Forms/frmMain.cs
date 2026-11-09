@@ -58,6 +58,7 @@ public partial class FrmMain : Form
     private FrmNpc mNpcEditor;
 
     private FrmMonsterSpecies mMonsterSpeciesEditor;
+    private FrmMonsterType mMonsterTypeEditor;
 
     private FrmProjectile mProjectileEditor;
 
@@ -86,6 +87,9 @@ public partial class FrmMain : Form
         var monsterSpeciesMenuItem = new ToolStripMenuItem(Strings.MonsterSpeciesEditor.Menu);
         monsterSpeciesMenuItem.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterSpecies);
         contentEditorsToolStripMenuItem.DropDownItems.Add(monsterSpeciesMenuItem);
+        var monsterTypeMenuItem = new ToolStripMenuItem(Strings.MonsterTypeEditor.Menu);
+        monsterTypeMenuItem.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterType);
+        contentEditorsToolStripMenuItem.DropDownItems.Add(monsterTypeMenuItem);
 
         dockLeft.Theme = new VS2015DarkTheme();
         Globals.MapListWindow = new FrmMapList();
@@ -1626,6 +1630,11 @@ public partial class FrmMain : Form
                         mItemEditor.Show();
                     }
 
+                    break;
+                case GameObjectType.MonsterType:
+                    mMonsterTypeEditor = new FrmMonsterType();
+                    mMonsterTypeEditor.InitEditor();
+                    mMonsterTypeEditor.Show();
                     break;
                 case GameObjectType.MonsterSpecies:
                     mMonsterSpeciesEditor = new FrmMonsterSpecies();

@@ -26,6 +26,9 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkNumericUpDown _specialAttack = StatInput();
     private readonly DarkNumericUpDown _specialDefense = StatInput();
     private readonly DarkNumericUpDown _speed = StatInput();
+    private readonly DarkComboBox _primaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkComboBox _secondaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private sealed record TypeChoice(Guid Id, string Name) { public override string ToString() => Name; }
     private readonly PictureBox _preview = new() { Size = new Size(96, 96), BackColor = System.Drawing.Color.Black };
     private readonly TableLayoutPanel _fields = new() { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12), AutoScroll = true };
     private MonsterSpeciesDescriptor? _selected;
@@ -68,6 +71,8 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.SpecialAttack, _specialAttack);
         AddField(Strings.MonsterSpeciesEditor.SpecialDefense, _specialDefense);
         AddField(Strings.MonsterSpeciesEditor.Speed, _speed);
+        AddField(Strings.MonsterSpeciesEditor.PrimaryType, _primaryType);
+        AddField(Strings.MonsterSpeciesEditor.SecondaryType, _secondaryType);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(5) };
         _btnCancel = AddButton(buttons, Strings.MonsterSpeciesEditor.Cancel, (_, _) => Close());
@@ -82,6 +87,8 @@ public sealed class FrmMonsterSpecies : EditorForm
         _description.TextChanged += EditFields;
         _folder.TextChanged += EditFields;
         _sprite.SelectedIndexChanged += EditFields;
+        _primaryType.SelectedIndexChanged += EditFields;
+        _secondaryType.SelectedIndexChanged += EditFields;
         foreach (var stat in new[] { _hp, _attack, _defense, _specialAttack, _specialDefense, _speed }) stat.ValueChanged += EditFields;
         FormClosed += (_, _) => Globals.CurrentEditor = -1;
     }
@@ -130,6 +137,7 @@ public sealed class FrmMonsterSpecies : EditorForm
 
     protected override void GameObjectUpdatedDelegate(GameObjectType type)
     {
+        if (type == GameObjectType.MonsterType) { ShowFields(); return; }
         if (type != GameObjectType.MonsterSpecies) return;
         foreach (var (id, draft) in _drafts)
         {
@@ -179,14 +187,44 @@ public sealed class FrmMonsterSpecies : EditorForm
             _specialAttack.Value = _selected.BaseStats.SpecialAttack;
             _specialDefense.Value = _selected.BaseStats.SpecialDefense;
             _speed.Value = _selected.BaseStats.Speed;
+            LoadTypeChoices();
             DrawSprite();
         }
         finally { _loading = false; }
     }
 
+    private void LoadTypeChoices()
+    {
+        if (_selected == null) return;
+        var types = MonsterTypeDescriptor.Lookup.Values.Cast<MonsterTypeDescriptor>()
+            .OrderBy(type => type.Name).Select(type => new TypeChoice(type.Id, type.Name)).ToArray();
+        var ids = _selected.TypeIds;
+        foreach (var (combo, index) in new[] { (_primaryType, 0), (_secondaryType, 1) })
+        {
+            combo.Items.Clear();
+            combo.Items.Add(new TypeChoice(Guid.Empty, Strings.General.None));
+            combo.Items.AddRange(types);
+            var selected = ids.ElementAtOrDefault(index);
+            if (selected != Guid.Empty && types.All(type => type.Id != selected))
+                combo.Items.Add(new TypeChoice(selected, Strings.MonsterTypeEditor.Missing.ToString(selected)));
+            combo.SelectedItem = combo.Items.Cast<TypeChoice>().First(type => type.Id == selected);
+        }
+    }
+
     private void EditFields(object? sender, EventArgs e)
     {
         if (_loading || _selected == null) return;
+        var primary = (_primaryType.SelectedItem as TypeChoice)?.Id ?? Guid.Empty;
+        var secondary = (_secondaryType.SelectedItem as TypeChoice)?.Id ?? Guid.Empty;
+        if (primary != Guid.Empty && primary == secondary)
+        {
+            // Restore the draft's valid selection instead of assigning one type twice.
+            _loading = true;
+            try { LoadTypeChoices(); }
+            finally { _loading = false; }
+            return;
+        }
+        _selected.TypeIds = new[] { primary, secondary }.Where(id => id != Guid.Empty).ToArray();
         _selected.Name = _name.Text;
         _selected.Description = _description.Text;
         _selected.Folder = _folder.Text;
@@ -198,6 +236,13 @@ public sealed class FrmMonsterSpecies : EditorForm
         _selected.BaseStats.SpecialDefense = (int)_specialDefense.Value;
         _selected.BaseStats.Speed = (int)_speed.Value;
         _speciesList.UpdateText(_selected.Name);
+        if (primary == Guid.Empty && secondary != Guid.Empty)
+        {
+            // With one selected type it becomes primary; never leave a secondary-only assignment.
+            _loading = true;
+            try { LoadTypeChoices(); }
+            finally { _loading = false; }
+        }
         if (sender == _sprite) DrawSprite();
     }
 
@@ -247,7 +292,7 @@ public sealed class FrmMonsterSpecies : EditorForm
     private void SaveSpecies(object? sender, EventArgs e)
     {
         var changed = _drafts.Values.Where(item => item.JsonData != _originals[item.Id]).ToArray();
-        if (changed.Any(item => !item.IsValid))
+        if (changed.Any(item => !item.IsValid || item.TypeIds.Any(id => MonsterTypeDescriptor.Get(id) == null)))
         {
             DarkMessageBox.ShowWarning(Strings.MonsterSpeciesEditor.Invalid, Text);
             return;

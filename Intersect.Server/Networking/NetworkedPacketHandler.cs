@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Intersect.Server.Monsters;
 using Intersect.Core;
 using Intersect.Enums;
 using Intersect.Framework.Core;
@@ -821,6 +823,15 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            {
+                lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
+            }
+            else HandleCreateGameObjectPacket(client, packet);
+        }
+
+        private void HandleCreateGameObjectPacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
+        {
             if (!client.IsEditor)
             {
                 return;
@@ -870,6 +881,15 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            {
+                lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
+            }
+            else HandleDeleteGameObjectPacket(client, packet);
+        }
+
+        private void HandleDeleteGameObjectPacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
+        {
             if (!client.IsEditor)
             {
                 return;
@@ -902,6 +922,17 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterType:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    {
+                        if (MonsterTypeRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray(), gameDb.MonsterTypes.AsNoTracking().ToArray()))
+                        {
+                            PacketSender.SendError(client, "This type is referenced by species or another type. Remove those references before deleting it.", "Monster Type");
+                            return;
+                        }
+                    }
+                    obj = MonsterTypeDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterSpecies:
                     using (var playerDb = DbInterface.CreatePlayerContext())
@@ -1022,6 +1053,15 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType)
+            {
+                lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
+            }
+            else HandleSaveGameObjectPacket(client, packet);
+        }
+
+        private void HandleSaveGameObjectPacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
+        {
             if (!client.IsEditor)
             {
                 return;
@@ -1045,6 +1085,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterType:
+                    obj = MonsterTypeDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterSpecies:
                     obj = MonsterSpeciesDescriptor.Get(id);
@@ -1150,21 +1193,26 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor)
                     {
-                        var candidate = new MonsterSpeciesDescriptor(id);
                         try
                         {
-                            candidate.Load(packet.Data);
+                            if (obj is MonsterSpeciesDescriptor)
+                            {
+                                var candidate = new MonsterSpeciesDescriptor(id);
+                                candidate.Load(packet.Data);
+                                MonsterTypeRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null);
+                            }
+                            else
+                            {
+                                var candidate = new MonsterTypeDescriptor(id);
+                                candidate.Load(packet.Data);
+                                MonsterTypeRules.Validate(candidate, typeId => typeId == id || MonsterTypeDescriptor.Get(typeId) != null);
+                            }
                         }
-                        catch (Newtonsoft.Json.JsonException)
+                        catch (Exception exception) when (exception is Newtonsoft.Json.JsonException or InvalidOperationException)
                         {
-                            PacketSender.SendError(client, "Invalid monster species data.", "Monster Species");
-                            return;
-                        }
-                        if (!candidate.IsValid)
-                        {
-                            PacketSender.SendError(client, "A species needs a name and positive HP, Attack, Defense, and Speed.", "Monster Species");
+                            PacketSender.SendError(client, "Invalid monster content: " + exception.Message, "Monster Content");
                             return;
                         }
                     }

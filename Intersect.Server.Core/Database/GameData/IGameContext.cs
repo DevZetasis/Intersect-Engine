@@ -39,6 +39,8 @@ public interface IGameContext : IDbContext
 
     DbSet<MonsterSpeciesDescriptor> MonsterSpecies { get; set; }
 
+    DbSet<MonsterTypeDescriptor> MonsterTypes { get; set; }
+
     DbSet<ProjectileDescriptor> Projectiles { get; set; }
 
     DbSet<QuestDescriptor> Quests { get; set; }
