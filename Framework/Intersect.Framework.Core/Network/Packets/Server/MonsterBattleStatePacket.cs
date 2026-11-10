@@ -13,6 +13,8 @@ public sealed class MonsterBattleActorView
     [Key(3)] public int Level { get; set; }
     [Key(4)] public long HP { get; set; }
     [Key(5)] public long MaximumHP { get; set; }
+    [Key(6)] public string FrontBattleSprite { get; set; } = string.Empty;
+    [Key(7)] public string BackBattleSprite { get; set; } = string.Empty;
 }
 
 [MessagePackObject]
@@ -42,4 +44,9 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(7)] public MonsterBattleMoveView[] Moves { get; set; } = [];
     [Key(8)] public string[] Messages { get; set; } = [];
     [Key(9)] public long Sequence { get; set; }
+    [Key(10)] public MonsterBattlePresentationEvent[] Events { get; set; } = [];
+    [Key(11)] public Guid PreviousRevision { get; set; }
+    [Key(12)] public bool IsCorrection { get; set; }
+    [Key(13)] public string Background { get; set; } = string.Empty;
+
 }

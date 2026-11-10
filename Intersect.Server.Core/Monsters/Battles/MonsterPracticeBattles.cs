@@ -40,14 +40,14 @@ public static class MonsterPracticeBattles
                         var move = MonsterMoveDescriptor.Get(moveId.Value) ?? throw new InvalidOperationException("An assigned move is missing.");
                         return new MonsterBattleMove(move, MonsterTypeDescriptor.Get(move.TypeId) ?? throw new InvalidOperationException("A move type is missing."));
                     }).ToArray();
-                    return new(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves);
+                    return new(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite);
                 }
                 var ownActor = Actor(owned.Id, string.IsNullOrWhiteSpace(owned.Nickname) ? species.Name : owned.Nickname, species,
                     owned.Level, owned.IVs, owned.EVs, nature, owned.MoveIds);
                 var opponentActor = Actor(Guid.NewGuid(), opponent.Name, opponent, opponentLevel, MonsterAttributeGeneration.GenerateIVs(random), new(),
                     opponentNatureId is { } selected ? MonsterNatureDescriptor.Get(selected) : null,
                     MonsterMoveAssignment.Initial(opponent, opponentLevel, id => MonsterMoveDescriptor.Get(id) != null));
-                return new(new(player.Id, [ownActor]), new(null, [opponentActor]), rules, random);
+                return new(new(player.Id, [ownActor]), new(null, [opponentActor]), rules, random, background: string.IsNullOrWhiteSpace(opponent.BattleBackground) ? species.BattleBackground : opponent.BattleBackground);
             }
         });
     }

@@ -1,5 +1,7 @@
 # First practice monster battles (Milestone 6C)
 
+> Milestone 6D now provides the battle scene, front/back artwork, menus and ordered event playback. See [the presentation report](monster-battle-presentation.md) for current builds, compatibility, tests and live-test instructions. The Milestone 6C mechanics described below remain in place.
+
 ## Architectural decisions
 
 Species learnsets are templates; they are not individual move inventories. OwnedMonsters therefore receives four nullable move UUID columns and a MovesInitialized marker. New grants assign the four most recently eligible distinct moves (level descending, UUID ascending to select ties, then level ascending/UUID ascending for slot order). Existing rows initialize once from the current learnset on first roster/battle access. An initialized empty inventory is intentional and is never rerolled. Persistent references protect moves assigned to offline owners.

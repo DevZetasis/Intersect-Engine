@@ -10,6 +10,9 @@ public static partial class Strings
         public static LocalizedString Name = "Species Name";
         public static LocalizedString Description = "Description";
         public static LocalizedString Sprite = "Sprite";
+        public static LocalizedString FrontBattleSprite = "Front Battle Sprite";
+        public static LocalizedString BackBattleSprite = "Back Battle Sprite";
+        public static LocalizedString BattleBackground = "Battle Background";
         public static LocalizedString Folder = "Folder";
         public static LocalizedString Id = "Species UUID";
         public static LocalizedString HP = "Base HP";

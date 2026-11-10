@@ -34,9 +34,11 @@ public sealed class MonsterBattleCombatant
     public Guid Id => Calculation.Id;
     public string Name { get; }
     public string Sprite { get; }
+    public string FrontBattleSprite { get; }
+    public string BackBattleSprite { get; }
     public long HP { get; private set; }
     public long MaximumHP => Calculation.Stats.HP;
-    public MonsterBattleCombatant(MonsterCalculationActor actor, string name, string sprite, MonsterBattleMove?[] moves)
+    public MonsterBattleCombatant(MonsterCalculationActor actor, string name, string sprite, MonsterBattleMove?[] moves, string frontBattleSprite = "", string backBattleSprite = "")
     {
         if (actor.Id == Guid.Empty || actor.Level < 1 || actor.Stats.ToArray().Any(value => value <= 0) ||
             moves.Length != 4 || moves.Where(move => move != null).Select(move => move!.Definition.Id).Distinct().Count() != moves.Count(move => move != null))
@@ -44,14 +46,14 @@ public sealed class MonsterBattleCombatant
         if (actor.TypeIds == null || actor.TypeIds.Count > 2 || actor.TypeIds.Any(id => id == Guid.Empty) || actor.TypeIds.Distinct().Count() != actor.TypeIds.Count)
             throw new InvalidOperationException("Invalid battle types.");
         Calculation = actor with { TypeIds = actor.TypeIds.ToArray() };
-        Name = name; Sprite = sprite;
+        Name = name; Sprite = sprite; FrontBattleSprite = frontBattleSprite; BackBattleSprite = backBattleSprite;
         Moves = moves.Select(move => move == null ? null : new MonsterBattleMove(move.Definition, move.Type)).ToArray();
         HP = MaximumHP;
     }
-    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves);
+    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves, FrontBattleSprite, BackBattleSprite);
     internal void Damage(long value) { if (value < 0) throw new ArgumentOutOfRangeException(nameof(value)); HP -= Math.Min(HP, value); }
     internal int[] LegalSlots() => Enumerable.Range(0, Moves.Length).Where(slot => Moves[slot]?.Usable == true).ToArray();
-    public MonsterBattleActorView View() => new() { Id = Id, Name = Name, Sprite = Sprite, Level = Calculation.Level, HP = HP, MaximumHP = MaximumHP };
+    public MonsterBattleActorView View() => new() { Id = Id, Name = Name, Sprite = Sprite, Level = Calculation.Level, HP = HP, MaximumHP = MaximumHP, FrontBattleSprite = FrontBattleSprite, BackBattleSprite = BackBattleSprite };
 }
 
 /// <summary>Side slots allow future two-active formats; this resolver currently requires exactly one per side.</summary>

@@ -202,7 +202,7 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMovePP().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterBattleAppearance().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
         Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");
@@ -342,4 +342,56 @@ public class MonsterSpeciesTests
             Directory.Delete(directory, recursive: true);
         }
     }
+    [Test]
+    public void LegacyBattleAppearanceDefaultsAndJsonIdentityRemainCompatible()
+    {
+        var id = Guid.NewGuid(); var species = new MonsterSpeciesDescriptor(id)
+        { Sprite = "sheet.png", FrontBattleSprite = "front.png", BackBattleSprite = "back.png", BattleBackground = "scene.png" };
+        var copy = new MonsterSpeciesDescriptor(Guid.NewGuid()); var destination = copy.Id; copy.Load(species.JsonData);
+        Assert.That(copy.Id, Is.EqualTo(destination)); Assert.That(copy.FrontBattleSprite, Is.EqualTo("front.png")); Assert.That(copy.BackBattleSprite, Is.EqualTo("back.png"));
+        Assert.That(copy.BattleBackground, Is.EqualTo("scene.png")); Assert.That(copy.Sprite, Is.EqualTo("sheet.png"));
+        copy.Load("{\"Name\":\"Legacy\",\"Sprite\":\"old.png\"}");
+        Assert.That(copy.IsValid, Is.True); Assert.That(copy.FrontBattleSprite, Is.Empty); Assert.That(copy.BackBattleSprite, Is.Empty); Assert.That(copy.BattleBackground, Is.Empty);
+    }
+    [Test]
+    public void BothAppearanceMigrationsAddOnlyDefaultedContentColumns()
+    {
+        foreach (var migration in new Migration[] { new Intersect.Server.Migrations.Sqlite.Game.AddMonsterBattleAppearance(), new Intersect.Server.Migrations.MySql.Game.AddMonsterBattleAppearance() })
+        {
+            var columns = migration.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.AddColumnOperation>().ToArray();
+            Assert.That(migration.UpOperations.Count, Is.EqualTo(3)); Assert.That(columns.Select(c => c.Name), Is.EquivalentTo(new[] { "FrontBattleSprite", "BackBattleSprite", "BattleBackground" }));
+            Assert.That(columns.All(c => c.Table == "MonsterSpecies" && !c.IsNullable && Equals(c.DefaultValue, "")), Is.True);
+            Assert.That(migration.DownOperations.Count, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
+    public void AppearanceUpgradePreservesLegacyContentAndPersistsDedicatedArt()
+    {
+        Options.EnsureCreated(); var directory = Path.Combine(Path.GetTempPath(), "Intersect-M6D-" + Guid.NewGuid()); Directory.CreateDirectory(directory);
+        var options = new DatabaseContextOptions { DatabaseType = DatabaseType.Sqlite, AutoDetectChanges = true,
+            ConnectionStringBuilder = new SqliteConnectionStringBuilder { DataSource = Path.Combine(directory, "gamedata.db"), Pooling = false } };
+        var original = Species();
+        try
+        {
+            using (var db = new SqliteGameContext(options))
+            {
+                db.GetService<IMigrator>().Migrate("20261109000100_AddMonsterMovePP");
+                db.Database.ExecuteSqlInterpolated($"INSERT INTO MonsterSpecies (Id, Name, Description, Sprite, Folder, TimeCreated, BaseStats, Types, Learnset) VALUES ({original.Id}, {original.Name}, {original.Description}, {original.Sprite}, {original.Folder}, {original.TimeCreated}, {original.BaseStatsJson}, {original.TypeIdsJson}, {original.LearnsetJson})");
+                db.Database.Migrate(); var loaded = db.MonsterSpecies.Single();
+                Assert.That(loaded.Id, Is.EqualTo(original.Id)); Assert.That(loaded.Sprite, Is.EqualTo(original.Sprite)); Assert.That(loaded.BaseStatsJson, Is.EqualTo(original.BaseStatsJson));
+                Assert.That(loaded.FrontBattleSprite, Is.Empty); Assert.That(loaded.BackBattleSprite, Is.Empty); Assert.That(loaded.BattleBackground, Is.Empty);
+                loaded.FrontBattleSprite = "front.png"; loaded.BackBattleSprite = "back.png"; loaded.BattleBackground = "scene.png"; db.SaveChanges();
+            }
+            using var reopened = new SqliteGameContext(options); var saved = reopened.MonsterSpecies.Single();
+            Assert.That(saved.Id, Is.EqualTo(original.Id)); Assert.That(saved.FrontBattleSprite, Is.EqualTo("front.png"));
+            Assert.That(saved.BackBattleSprite, Is.EqualTo("back.png")); Assert.That(saved.BattleBackground, Is.EqualTo("scene.png"));
+        }
+        finally
+        {
+            if (Path.GetDirectoryName(Path.GetFullPath(directory)) != Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()))) throw new InvalidOperationException();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }

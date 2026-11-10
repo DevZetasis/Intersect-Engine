@@ -28,6 +28,13 @@ public class MonsterSpeciesEditorTests
             editor.InitEditor();
             Field<TextBox>(editor, "_name").Text = "Unsaved Name";
             Assert.That(Field<TreeView>(editor, "_speciesList").SelectedNode!.Text, Is.EqualTo("Unsaved Name"));
+            foreach (var name in new[] { "_frontBattleSprite", "_backBattleSprite", "_battleBackground" })
+            {
+                var combo = Field<ComboBox>(editor, name); combo.Items.Add("test-art.png"); combo.SelectedItem = "test-art.png";
+            }
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").FrontBattleSprite, Is.EqualTo("test-art.png"));
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BackBattleSprite, Is.EqualTo("test-art.png"));
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BattleBackground, Is.EqualTo("test-art.png"));
             Field<TextBox>(editor, "_description").Text = "Unsaved Description";
             Field<NumericUpDown>(editor, "_hp").Value = 123;
             Field<NumericUpDown>(editor, "_specialAttack").Value = 456;
@@ -100,7 +107,9 @@ public class MonsterSpeciesEditorTests
                 Assert.That(input.Maximum, Is.EqualTo(int.MaxValue));
                 input.Value = values[index];
             }
-            var draftJson = Field<MonsterSpeciesDescriptor>(editor, "_selected").BaseStatsJson;
+            var selected = Field<MonsterSpeciesDescriptor>(editor, "_selected");
+            selected.FrontBattleSprite = "front.png"; selected.BackBattleSprite = "back.png"; selected.BattleBackground = "scene.png";
+            var draftJson = selected.BaseStatsJson;
             typeof(FrmMonsterSpecies).GetMethod("CopySpecies", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(editor, [null, EventArgs.Empty]);
             typeof(FrmMonsterSpecies).GetMethod("SelectSpecies", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -110,6 +119,7 @@ public class MonsterSpeciesEditorTests
             var pasted = Field<MonsterSpeciesDescriptor>(editor, "_selected");
             Assert.That(pasted.Id, Is.EqualTo(target.Id));
             Assert.That(pasted.BaseStatsJson, Is.EqualTo(draftJson));
+            Assert.That(pasted.FrontBattleSprite, Is.EqualTo("front.png")); Assert.That(pasted.BackBattleSprite, Is.EqualTo("back.png")); Assert.That(pasted.BattleBackground, Is.EqualTo("scene.png"));
             var table = Field<TableLayoutPanel>(editor, "_fields");
             editor.PerformLayout();
             table.PerformLayout();
@@ -117,8 +127,8 @@ public class MonsterSpeciesEditorTests
             {
                 var input = Field<NumericUpDown>(editor, fields[index]);
                 Assert.That(input.Value, Is.EqualTo(values[index]));
-                Assert.That(table.GetRow(input), Is.EqualTo(6 + index));
-                var label = table.GetControlFromPosition(0, 6 + index)!;
+                Assert.That(table.GetRow(input), Is.EqualTo(9 + index));
+                var label = table.GetControlFromPosition(0, 9 + index)!;
                 Assert.That(label.PreferredSize.Width, Is.LessThanOrEqualTo((int)table.ColumnStyles[0].Width));
             }
             typeof(FrmMonsterSpecies).GetMethod("UndoSpecies", BindingFlags.Instance | BindingFlags.NonPublic)!

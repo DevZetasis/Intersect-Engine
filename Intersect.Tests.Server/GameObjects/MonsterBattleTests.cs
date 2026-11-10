@@ -221,4 +221,77 @@ public class MonsterBattleTests
         registry.Cancel(owner, "Test cleanup");
     }
 
+    [Test]
+    public void TypedPresentationFollowsSpeedAndCarriesAuthoritativeHpAndRevision()
+    {
+        var session = Session(Guid.NewGuid(), Actor(Move(), speed: 10), Actor(Move(), speed: 100));
+        var initial = session.Snapshot(1); Assert.That(initial.Events, Is.Empty); Play(session);
+        var resolved = session.Snapshot(2);
+        Assert.That(resolved.PreviousRevision, Is.EqualTo(initial.Revision)); Assert.That(resolved.Revision, Is.Not.EqualTo(initial.Revision));
+        Assert.That(resolved.Events.First(e => e.Kind == MonsterBattleEventKind.MoveUsed).ActorId, Is.EqualTo(initial.Opponent.Id));
+        Assert.That(resolved.Events.Select(e => e.Order), Is.EqualTo(Enumerable.Range(0, resolved.Events.Length)));
+        var losses = resolved.Events.Where(e => e.Kind == MonsterBattleEventKind.DamageApplied).ToArray();
+        Assert.That(losses.Length, Is.EqualTo(2)); Assert.That(losses[0].TargetId, Is.EqualTo(initial.Player.Id));
+        Assert.That(losses[0].HPBefore, Is.EqualTo(initial.Player.HP)); Assert.That(losses[0].HPAfter, Is.EqualTo(resolved.Player.HP));
+        Assert.That(losses[1].HPAfter, Is.EqualTo(resolved.Opponent.HP));
+        Assert.That(losses.All(e => e.MoveId != Guid.Empty), Is.True);
+        var rejected = session.Snapshot(3, "Stale action"); Assert.That(rejected.IsCorrection, Is.True); Assert.That(rejected.Events, Is.Empty);
+    }
+    [Test]
+    public void TypedPriorityPrecedesSpeedAndKnockoutOmitsTheFaintedAction()
+    {
+        var attack = Move(priority: 1); attack.AnimationId = Guid.NewGuid();
+        var session = Session(Guid.NewGuid(), Actor(attack, speed: 1), Actor(Move(), hp: 1, speed: 100));
+        var initial = session.Snapshot(1); Play(session); var result = session.Snapshot(2);
+        var actions = result.Events.Where(e => e.Kind == MonsterBattleEventKind.MoveUsed).ToArray();
+        Assert.That(actions.Length, Is.EqualTo(1)); Assert.That(actions[0].ActorId, Is.EqualTo(initial.Player.Id));
+        Assert.That(actions[0].AnimationId, Is.EqualTo(attack.AnimationId));
+        Assert.That(result.Events.Single(e => e.Kind == MonsterBattleEventKind.DamageApplied).HPAfter, Is.Zero);
+        Assert.That(Array.IndexOf(result.Events, result.Events.Single(e => e.Kind == MonsterBattleEventKind.MonsterFainted)), Is.LessThan(result.Events.Length - 1));
+        Assert.That(result.Events.Last().Kind, Is.EqualTo(MonsterBattleEventKind.BattleFinished)); Assert.That(result.Outcome, Is.EqualTo(MonsterBattleOutcome.Victory));
+    }
+    [Test]
+    public void MissAndImmunityFactsDoNotInventDamage()
+    {
+        var miss = Move(); miss.AlwaysHits = false; miss.Accuracy = 1;
+        var session = Session(Guid.NewGuid(), Actor(miss), Actor(Move(), speed: 10)); Play(session); var state = session.Snapshot(1);
+        Assert.That(state.Events.Any(e => e.Kind == MonsterBattleEventKind.MoveMissed && e.ActorId == state.Player.Id), Is.True);
+        Assert.That(state.Events.Any(e => e.Kind == MonsterBattleEventKind.DamageApplied && e.ActorId == state.Player.Id), Is.False);
+        var immune = new MonsterTypeDescriptor(Element); immune.Effectiveness[Element] = 0;
+        session = Session(Guid.NewGuid(), Actor(Move(), type: immune), Actor(Move(), speed: 10, type: immune)); Play(session);
+        Assert.That(session.Snapshot(1).Events.Where(e => e.Kind == MonsterBattleEventKind.DamageApplied).All(e => e.HPBefore == e.HPAfter), Is.True);
+    }
+    [Test]
+    public void PresentationIsBoundedPrivateAndCopiedAndWireEventsRoundTrip()
+    {
+        var actor = Actor(Move(), hp: 10000); var session = Session(Guid.NewGuid(), actor, Actor(Move(), hp: 10000, speed: 10));
+        for (var i = 0; i < 4; i++) { Play(session); Assert.That(session.Snapshot(i).Events.Length, Is.LessThanOrEqualTo(15)); }
+        var state = session.Snapshot(5); var original = state.Events[0].Text; state.Events[0].Text = "caller mutation";
+        Assert.That(session.Snapshot(6).Events[0].Text, Is.EqualTo(original));
+        var wire = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(session.Snapshot(7)));
+        Assert.That(wire.Events, Is.EqualTo(session.Snapshot(7).Events)); Assert.That(wire.PreviousRevision, Is.EqualTo(state.PreviousRevision));
+        Assert.That(wire.Events.All(e => e.ActorId == wire.Player.Id || e.ActorId == wire.Opponent.Id), Is.True);
+        session.Cancel("operator cancelled"); Assert.That(session.Snapshot(8).Events.Single().Kind, Is.EqualTo(MonsterBattleEventKind.BattleFinished));
+    }
+    [Test]
+    public void CombatantArtReferencesAreCopiedWithoutChangingStatsOrOverworldSprite()
+    {
+        var original = Actor(Move());
+        var actor = new MonsterBattleCombatant(original.Calculation, "Custom", "sheet.png", original.Moves, "front.png", "back.png");
+        var copy = actor.Copy().View(); Assert.That(copy.Sprite, Is.EqualTo("sheet.png")); Assert.That(copy.FrontBattleSprite, Is.EqualTo("front.png"));
+        Assert.That(copy.BackBattleSprite, Is.EqualTo("back.png")); Assert.That(copy.MaximumHP, Is.EqualTo(original.MaximumHP));
+    }
+
+    [Test]
+    public void BattleCompatibilityMarkerFitsTheProductionRsaHandshake()
+    {
+        using var outer = System.Security.Cryptography.RSA.Create(4096);
+        using var peer = System.Security.Cryptography.RSA.Create(2048);
+        var expected = SharedConstants.VersionData.ToArray();
+        var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
+        Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
+        Assert.That(hail.VersionData, Is.EqualTo(expected));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v2"));
+    }
+
 }

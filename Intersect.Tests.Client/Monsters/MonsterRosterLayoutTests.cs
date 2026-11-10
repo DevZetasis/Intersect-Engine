@@ -4,12 +4,14 @@ using Intersect.Client.Entities;
 using Intersect.Client.Framework.Content;
 using Intersect.Client.Framework.File_Management;
 using Intersect.Client.Framework.Graphics;
+using Intersect.Client.Framework.Input;
 using Intersect.Client.Framework.Gwen;
 using Intersect.Client.Framework.Gwen.Control;
 using Intersect.Client.General;
 using Intersect.Client.Interface.Game.Monsters;
 using Intersect.Core;
 using Intersect.Framework.Core.GameObjects.Monsters;
+using Intersect.Framework.Core.GameObjects.Animations;
 using Intersect.Network.Packets.Server;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
@@ -195,7 +197,7 @@ public class MonsterRosterLayoutTests
             {
                 PlayerId = player.Id, BattleId = battleId, Turn = turn, Revision = Guid.NewGuid(), Sequence = sequence, Outcome = outcome,
                 Player = new() { Id = first.Id, Name = "Owned", Level = 12, HP = 25, MaximumHP = 50, Sprite = species.Sprite },
-                Opponent = new() { Id = Guid.NewGuid(), Name = "Practice", Level = 12, HP = 30, MaximumHP = 60 },
+                Opponent = new() { Id = Guid.NewGuid(), Name = "Practice", Level = 12, HP = 30, MaximumHP = 60, Sprite = species.Sprite },
                 Moves = [new() { Slot = 0, Name = "Practice Hit", Type = "Custom", Category = "Physical", PP = 19, MaximumPP = 20, Usable = true },
                     new() { Slot = 1, Name = "Status test", Type = "Custom", Category = "Status", PP = 20, MaximumPP = 20, UnavailableReason = "Effect not implemented" }],
                 Messages = ["Practice battle started."],
@@ -210,10 +212,38 @@ public class MonsterRosterLayoutTests
                 battleWindow.Update();
                 for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
                 Label BattleLabel(string name) => Descendants(battleWindow).OfType<Label>().Single(label => label.Name == name);
-                Assert.That(BattleLabel("PlayerHP").Text, Is.EqualTo("HP 25 / 50"));
+                Assert.That(BattleLabel("PlayerHPValue").Text, Is.EqualTo("HP 25 / 50"));
+                Assert.That(BattleLabel("PlayerHP").Text, Is.Empty);
                 Assert.That(((ProgressBar)BattleLabel("PlayerHP")).Value, Is.EqualTo(.5f));
-                Assert.That(BattleLabel("BattleMove0").Text, Is.EqualTo("Practice Hit \u2014 Custom / Physical \u2014 PP 19/20"));
+                Assert.That(BattleLabel("BattleMove0").Text, Is.EqualTo("Practice Hit\nCustom / Physical\nPP 19/20"));
                 Assert.That(((Button)BattleLabel("BattleMove1")).IsDisabled, Is.True);
+                Button BattleButton(string name) => (Button)BattleLabel(name);
+                void ClickBattle(string name) => typeof(Control).GetMethod("InputNonUserMouseClicked", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(BattleButton(name), [MouseButton.Left, Point.Empty, false]);
+                foreach (var name in new[] { "BagButton", "MonstersBattleButton", "RunButton" }) Assert.That(BattleButton(name).IsDisabled, Is.True);
+                ClickBattle("RunButton"); Assert.That(sent, Is.Empty);
+                ClickBattle("FightButton");
+                // No deferred layout frame may be required to make the first opened move list readable.
+                for (var slot = 0; slot < 4; slot++)
+                {
+                    Assert.That(BattleButton("BattleMove" + slot).Width, Is.GreaterThanOrEqualTo(200));
+                    Assert.That(BattleButton("BattleMove" + slot).Height, Is.GreaterThanOrEqualTo(60));
+                }
+                Assert.That(Descendants(battleWindow).Single(c => c.Name == "BattleFightMenu").IsHidden, Is.False);
+                ClickBattle("BackBattleButton");
+                Assert.That(Descendants(battleWindow).Single(c => c.Name == "BattleMainMenu").IsHidden, Is.False);
+                ClickBattle("FightButton");
+                var ownSprite = Descendants(battleWindow).Single(c => c.Name == "PlayerSprite");
+                var enemySprite = Descendants(battleWindow).Single(c => c.Name == "OpponentSprite");
+                Assert.That(ownSprite.X, Is.LessThan(enemySprite.X)); Assert.That(ownSprite.Y, Is.GreaterThan(enemySprite.Y));
+                foreach (var c in Descendants(battleWindow).Where(c => c is Button && c.Name != null))
+                {
+                    if (!c.IsVisibleInTree) continue;
+                    var origin = c.ToCanvas(Point.Empty); var end = c.ToCanvas(c.Size);
+                    Assert.That(origin.X, Is.GreaterThanOrEqualTo(0), c.Name); Assert.That(origin.Y, Is.GreaterThanOrEqualTo(0), c.Name);
+                    Assert.That(end.X, Is.LessThanOrEqualTo(canvas.Width), c.Name); Assert.That(end.Y, Is.LessThanOrEqualTo(canvas.Height), c.Name);
+                }
+
                 // The first draw loads saved layout after Update has rendered the opening snapshot.
                 // Saved control enablement from a different monster must never replace battle legality.
                 var savedLayout = JObject.Parse(battleWindow.GetJsonUI(true));
@@ -243,10 +273,42 @@ public class MonsterRosterLayoutTests
                 applyBattle.Invoke(packetHandler, [null, foreign]); Assert.That(player.MonsterBattleState, Is.SameAs(state));
                 var newer = BattleState(3, 2); applyBattle.Invoke(packetHandler, [null, newer]);
                 applyBattle.Invoke(packetHandler, [null, state]); Assert.That(player.MonsterBattleState, Is.SameAs(newer));
-                battleWindow.Update(); Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.False);
+                battleWindow.Update(); Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.True);
+                ClickBattle("FightButton"); Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.False);
                 var endState = BattleState(4, 2, MonsterBattleOutcome.Victory); applyBattle.Invoke(packetHandler, [null, endState]); battleWindow.Update();
                 Assert.That(((Button)BattleLabel("CloseBattleButton")).IsDisabled, Is.False);
                 Assert.That(((Button)BattleLabel("ForfeitButton")).IsDisabled, Is.True);
+                var animationStart = BattleState(5, 1); animationStart.BattleId = Guid.NewGuid();
+                applyBattle.Invoke(packetHandler, [null, animationStart]); battleWindow.Update();
+                var restingX = ownSprite.X;
+                var animated = BattleState(6, 2, MonsterBattleOutcome.Victory); animated.BattleId = animationStart.BattleId;
+                animated.PreviousRevision = animationStart.Revision; animated.Opponent.Id = animationStart.Opponent.Id; animated.Opponent.HP = 0;
+                var authored = new AnimationDescriptor(Guid.NewGuid()) { Lower = new AnimationLayer { Sprite = "effect.png", FrameCount = 4, XFrames = 2, YFrames = 2, FrameSpeed = 50 } };
+                AnimationDescriptor.Lookup.Set(authored.Id, authored);
+                animated.Events = [new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 0, ActorId = first.Id, TargetId = animated.Opponent.Id, Text = "Attack" },
+                    new() { Kind = MonsterBattleEventKind.DamageApplied, Order = 1, ActorId = first.Id, TargetId = animated.Opponent.Id, HPBefore = 30, HPAfter = 0, AnimationId = authored.Id, Text = "Impact" },
+                    new() { Kind = MonsterBattleEventKind.MonsterFainted, Order = 2, ActorId = first.Id, TargetId = animated.Opponent.Id, Text = "Fainted" },
+                    new() { Kind = MonsterBattleEventKind.BattleFinished, Order = 3, Text = "Won" }];
+                applyBattle.Invoke(packetHandler, [null, animated]); battleWindow.Update();
+                var playback = (MonsterBattlePlayback)typeof(MonsterBattleWindow).GetField("_playback", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(battleWindow)!;
+                playback.Tick(.175); typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
+                Assert.That(ownSprite.X, Is.GreaterThan(restingX), "The move visibly lunges before HP changes.");
+                Assert.That(BattleButton("FightButton").IsDisabled, Is.True); Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.True);
+                playback.Advance(); playback.Tick(.1);
+                typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
+                var effect = Descendants(battleWindow).OfType<ImagePanel>().Single(c => c.Name == "BattleLowerEffect");
+                Assert.That(effect.Texture, Is.Not.Null); Assert.That(effect.IsHidden, Is.False);
+                AnimationDescriptor.Lookup.DeleteAt(authored.Id); // Missing animation falls back without blocking the battle.
+                typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
+                Assert.That(effect.IsHidden, Is.True);
+                ClickBattle("SkipButton"); Assert.That(sent.Count, Is.EqualTo(1));
+                Assert.That(((ProgressBar)BattleLabel("OpponentHP")).Value, Is.Zero); Assert.That(enemySprite.IsHidden, Is.True);
+                Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);
+                var forfeitState = BattleState(8, 1); forfeitState.BattleId = Guid.NewGuid(); applyBattle.Invoke(packetHandler, [null, forfeitState]); battleWindow.Update();
+                ClickBattle("RunButton"); Assert.That(sent.Count, Is.EqualTo(1));
+                ClickBattle("ForfeitButton"); Assert.That(sent.Last().Forfeit, Is.True); Assert.That(sent.Count, Is.EqualTo(2));
+                var finished = BattleState(9, 1, MonsterBattleOutcome.Forfeit); finished.BattleId = forfeitState.BattleId;
+                applyBattle.Invoke(packetHandler, [null, finished]); battleWindow.Update();
                 battleWindow.Hide(); battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
                 player.MonsterBattleState = null; battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
             }
@@ -304,7 +366,7 @@ public class MonsterRosterLayoutTests
     {
         public IFont Font { get; } = new FontStub();
         private readonly IGameTexture _texture = DispatchProxy.Create<IGameTexture, TextureStub>();
-        public override IGameTexture? GetTexture(TextureType type, string name) => type == TextureType.Entity ? _texture : null;
+        public override IGameTexture? GetTexture(TextureType type, string name) => type is TextureType.Entity or TextureType.Animation ? _texture : null;
         public override IFont? GetFont(string? name) => Font;
         public string? LayoutJson { get; set; }
         public override bool GetLayout(UI stage, string name, string resolution, bool skipCache, Action<string, bool> layoutHandler)

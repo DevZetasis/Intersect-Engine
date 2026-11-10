@@ -93,6 +93,9 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.FrontBattleSprite).HasMaxLength(255).IsRequired().HasDefaultValue("");
+        modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BackBattleSprite).HasMaxLength(255).IsRequired().HasDefaultValue("");
+        modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BattleBackground).HasMaxLength(255).IsRequired().HasDefaultValue("");
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.MaximumPP).HasDefaultValue(20);
         modelBuilder.Entity<EquipmentProperties>()
             .HasOne(property => property.Descriptor)

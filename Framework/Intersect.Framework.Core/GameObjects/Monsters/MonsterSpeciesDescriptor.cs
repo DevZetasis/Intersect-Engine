@@ -13,6 +13,10 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
 
     public string Description { get; set; } = string.Empty;
     public string Sprite { get; set; } = string.Empty;
+    // Dedicated static battle art uses the entity resource directory; Sprite remains the overworld sheet.
+    public string FrontBattleSprite { get; set; } = string.Empty;
+    public string BackBattleSprite { get; set; } = string.Empty;
+    public string BattleBackground { get; set; } = string.Empty;
     public string Folder { get; set; } = string.Empty;
 
     [NotMapped]
@@ -48,7 +52,7 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
 
     [NotMapped, JsonIgnore]
     public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Sprite != null &&
-                           Folder != null && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
+                           FrontBattleSprite is { Length: <= 255 } && BackBattleSprite is { Length: <= 255 } && BattleBackground is { Length: <= 255 } && Folder != null && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
                            TypeIds.All(id => id != Guid.Empty) && TypeIds.Distinct().Count() == TypeIds.Length && Learnset != null &&
                            Learnset.All(entry => entry is { IsValid: true });
 
@@ -62,6 +66,10 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
                 TypeIds = Array.Empty<Guid>();
             if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(Learnset), StringComparison.OrdinalIgnoreCase) == null)
                 Learnset = new();
+            var appearance = Newtonsoft.Json.Linq.JObject.Parse(json);
+            if (appearance.Property(nameof(FrontBattleSprite), StringComparison.OrdinalIgnoreCase) == null) FrontBattleSprite = string.Empty;
+            if (appearance.Property(nameof(BackBattleSprite), StringComparison.OrdinalIgnoreCase) == null) BackBattleSprite = string.Empty;
+            if (appearance.Property(nameof(BattleBackground), StringComparison.OrdinalIgnoreCase) == null) BattleBackground = string.Empty;
             base.Load(json, keepCreationTime);
         }
         finally

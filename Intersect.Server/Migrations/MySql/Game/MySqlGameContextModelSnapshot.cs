@@ -497,6 +497,12 @@ namespace Intersect.Server.Migrations.MySql.Game
                         .HasColumnType("longtext")
                         .HasColumnOrder(0);
 
+                    b.Property<string>("FrontBattleSprite").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("varchar(255)").HasDefaultValue("");
+
+                    b.Property<string>("BackBattleSprite").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("varchar(255)").HasDefaultValue("");
+
+                    b.Property<string>("BattleBackground").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("varchar(255)").HasDefaultValue("");
+
                     b.Property<string>("Sprite")
                         .HasColumnType("longtext");
 

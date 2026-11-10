@@ -20,6 +20,9 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkTextBox _folder = new();
     private readonly DarkTextBox _id = new() { ReadOnly = true };
     private readonly DarkComboBox _sprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkComboBox _frontBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkComboBox _backBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkComboBox _battleBackground = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkNumericUpDown _hp = StatInput();
     private readonly DarkNumericUpDown _attack = StatInput();
     private readonly DarkNumericUpDown _defense = StatInput();
@@ -66,6 +69,9 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.Folder, _folder);
         AddField(Strings.MonsterSpeciesEditor.Sprite, _sprite);
         AddField(string.Empty, _preview);
+        AddField(Strings.MonsterSpeciesEditor.FrontBattleSprite, _frontBattleSprite);
+        AddField(Strings.MonsterSpeciesEditor.BackBattleSprite, _backBattleSprite);
+        AddField(Strings.MonsterSpeciesEditor.BattleBackground, _battleBackground);
         AddField(Strings.MonsterSpeciesEditor.HP, _hp);
         AddField(Strings.MonsterSpeciesEditor.Attack, _attack);
         AddField(Strings.MonsterSpeciesEditor.Defense, _defense);
@@ -85,6 +91,12 @@ public sealed class FrmMonsterSpecies : EditorForm
 
         _sprite.Items.Add(Strings.General.None.ToString());
         _sprite.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(GameContentManager.TextureType.Entity));
+        foreach (var combo in new[] { _frontBattleSprite, _backBattleSprite, _battleBackground })
+        {
+            combo.Items.Add(Strings.General.None.ToString());
+            combo.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(combo == _battleBackground ? GameContentManager.TextureType.Image : GameContentManager.TextureType.Entity));
+            combo.SelectedIndexChanged += EditFields;
+        }
         _name.TextChanged += EditFields;
         _description.TextChanged += EditFields;
         _folder.TextChanged += EditFields;
@@ -183,6 +195,12 @@ public sealed class FrmMonsterSpecies : EditorForm
             var sprite = string.IsNullOrEmpty(_selected.Sprite) ? Strings.General.None.ToString() : _selected.Sprite;
             if (!_sprite.Items.Contains(sprite)) _sprite.Items.Add(sprite);
             _sprite.SelectedItem = sprite;
+            foreach (var (combo, value) in new[] { (_frontBattleSprite, _selected.FrontBattleSprite), (_backBattleSprite, _selected.BackBattleSprite), (_battleBackground, _selected.BattleBackground) })
+            {
+                var choice = string.IsNullOrWhiteSpace(value) ? Strings.General.None.ToString() : value;
+                if (!combo.Items.Contains(choice)) combo.Items.Add(choice);
+                combo.SelectedItem = choice;
+            }
             _hp.Value = _selected.BaseStats.HP;
             _attack.Value = _selected.BaseStats.Attack;
             _defense.Value = _selected.BaseStats.Defense;
@@ -232,6 +250,9 @@ public sealed class FrmMonsterSpecies : EditorForm
         _selected.Description = _description.Text;
         _selected.Folder = _folder.Text;
         _selected.Sprite = _sprite.SelectedIndex <= 0 ? string.Empty : _sprite.Text;
+        _selected.FrontBattleSprite = _frontBattleSprite.SelectedIndex <= 0 ? string.Empty : _frontBattleSprite.Text;
+        _selected.BackBattleSprite = _backBattleSprite.SelectedIndex <= 0 ? string.Empty : _backBattleSprite.Text;
+        _selected.BattleBackground = _battleBackground.SelectedIndex <= 0 ? string.Empty : _battleBackground.Text;
         _selected.BaseStats.HP = (int)_hp.Value;
         _selected.BaseStats.Attack = (int)_attack.Value;
         _selected.BaseStats.Defense = (int)_defense.Value;

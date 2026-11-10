@@ -471,6 +471,12 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                         .HasColumnType("TEXT")
                         .HasColumnOrder(0);
 
+                    b.Property<string>("FrontBattleSprite").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("TEXT").HasDefaultValue("");
+
+                    b.Property<string>("BackBattleSprite").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("TEXT").HasDefaultValue("");
+
+                    b.Property<string>("BattleBackground").IsRequired().ValueGeneratedOnAdd().HasMaxLength(255).HasColumnType("TEXT").HasDefaultValue("");
+
                     b.Property<string>("Sprite")
                         .HasColumnType("TEXT");
 
