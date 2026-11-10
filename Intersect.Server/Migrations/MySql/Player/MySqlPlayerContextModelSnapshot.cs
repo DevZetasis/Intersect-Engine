@@ -127,6 +127,15 @@ namespace Intersect.Server.Migrations.MySql.Player
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");
 
+                    b.Property<Guid?>("Move1Id").HasColumnType("char(36)").UseCollation("ascii_general_ci");
+                    b.Property<Guid?>("Move2Id").HasColumnType("char(36)").UseCollation("ascii_general_ci");
+                    b.Property<Guid?>("Move3Id").HasColumnType("char(36)").UseCollation("ascii_general_ci");
+                    b.Property<Guid?>("Move4Id").HasColumnType("char(36)").UseCollation("ascii_general_ci");
+                    b.Property<bool>("MovesInitialized").ValueGeneratedOnAdd().HasColumnType("tinyint(1)").HasDefaultValue(false);
+                    b.HasIndex("Move1Id");
+                    b.HasIndex("Move2Id");
+                    b.HasIndex("Move3Id");
+                    b.HasIndex("Move4Id");
                     b.HasKey("Id");
                       b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();

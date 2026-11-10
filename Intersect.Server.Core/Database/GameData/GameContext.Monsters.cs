@@ -7,6 +7,7 @@ namespace Intersect.Server.Database.GameData;
 
 public abstract partial class GameContext
 {
+    public Func<Guid, bool>? MoveReferenceExists { get; set; }
     public Func<Guid, bool>? NatureReferenceExists { get; set; }
     private void ValidateMonsterContent()
     {
@@ -63,8 +64,8 @@ public abstract partial class GameContext
             {
                 if (entry.State == EntityState.Deleted)
                 {
-                    if (MonsterMoveRules.IsReferenced(move.Id, species.Values))
-                        throw new InvalidOperationException("This move is referenced by species learnsets. Remove those references before deleting it.");
+                    if (MoveReferenceExists?.Invoke(move.Id) == true || MonsterMoveRules.IsReferenced(move.Id, species.Values))
+                        throw new InvalidOperationException("This move is referenced by owned monsters or species learnsets. Remove those references before deleting it.");
                 }
                 else MonsterMoveRules.Validate(move, types.ContainsKey, animations.Contains);
             }

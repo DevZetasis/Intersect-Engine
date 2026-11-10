@@ -43,6 +43,21 @@ public sealed class MonsterInstance
     public Guid Revision { get; private set; } = Guid.NewGuid();
 
     public Guid? NatureId { get; private set; }
+    public Guid? Move1Id { get; private set; }
+    public Guid? Move2Id { get; private set; }
+    public Guid? Move3Id { get; private set; }
+    public Guid? Move4Id { get; private set; }
+    public bool MovesInitialized { get; private set; }
+    [NotMapped]
+    public Guid?[] MoveIds => [Move1Id, Move2Id, Move3Id, Move4Id];
+    internal void InitializeMoves(Guid?[] moves)
+    {
+        if (MovesInitialized) return;
+        Intersect.Server.Monsters.MonsterMoveAssignment.Validate(moves);
+        (Move1Id, Move2Id, Move3Id, Move4Id) = (moves[0], moves[1], moves[2], moves[3]);
+        MovesInitialized = true;
+        // Compatibility initialization does not invalidate an existing placement revision.
+    }
     public int IvHP { get; private set; }
     public int IvAttack { get; private set; }
     public int IvDefense { get; private set; }

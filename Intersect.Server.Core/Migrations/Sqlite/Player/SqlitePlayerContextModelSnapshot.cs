@@ -116,6 +116,15 @@ namespace Intersect.Server.Migrations.Sqlite.Player
                     b.Property<Guid?>("NatureId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("Move1Id").HasColumnType("TEXT");
+                    b.Property<Guid?>("Move2Id").HasColumnType("TEXT");
+                    b.Property<Guid?>("Move3Id").HasColumnType("TEXT");
+                    b.Property<Guid?>("Move4Id").HasColumnType("TEXT");
+                    b.Property<bool>("MovesInitialized").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(false);
+                    b.HasIndex("Move1Id");
+                    b.HasIndex("Move2Id");
+                    b.HasIndex("Move3Id");
+                    b.HasIndex("Move4Id");
                     b.HasKey("Id");
                       b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();

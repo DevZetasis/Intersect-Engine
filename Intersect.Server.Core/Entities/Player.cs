@@ -477,7 +477,11 @@ public partial class Player : Entity
     public void TryLogout(bool force = false, bool softLogout = false, TaskCompletionSource? logoutCompletionSource = null)
     {
         LastOnline = DateTime.Now;
-        Client = default;
+        lock (Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.SyncRoot)
+        {
+            Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Cancel(Id, "Practice forfeited: client disconnected or logged out.", disconnect: true);
+            Client = default;
+        }
 
         if (LoginTime != null)
         {

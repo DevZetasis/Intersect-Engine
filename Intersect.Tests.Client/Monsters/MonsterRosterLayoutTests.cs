@@ -13,6 +13,7 @@ using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Network.Packets.Server;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 using Control = Intersect.Client.Framework.Gwen.Control.Base;
 
 namespace Intersect.Tests.Client.Monsters;
@@ -137,7 +138,7 @@ public class MonsterRosterLayoutTests
             window.Update();
             Assert.That(list.RowCount, Is.Zero);
             Assert.That(Named("SelectedName").Text, Is.Empty);
-            Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("—"));
+            Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("\u2014"));
             Assert.That(sprite.Texture, Is.Null);
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").IsDisabled, Is.True);
 
@@ -185,6 +186,71 @@ public class MonsterRosterLayoutTests
                 Assert.That(monstersButton.Right, Is.LessThanOrEqualTo(menu.Width - 4));
                 Assert.That(icons.All(icon => icon.Width == 36 && icon.Height == 36), Is.True);
             }
+
+            // Real Gwen battle controls consume only authoritative snapshots and send one action per revision.
+            var sent = new List<Intersect.Network.Packets.Client.MonsterBattleActionPacket>();
+            var battleWindow = new MonsterBattleWindow(canvas, packet => sent.Add(packet));
+            var battleId = Guid.NewGuid();
+            MonsterBattleStatePacket BattleState(long sequence, int turn, MonsterBattleOutcome outcome = MonsterBattleOutcome.Active) => new()
+            {
+                PlayerId = player.Id, BattleId = battleId, Turn = turn, Revision = Guid.NewGuid(), Sequence = sequence, Outcome = outcome,
+                Player = new() { Id = first.Id, Name = "Owned", Level = 12, HP = 25, MaximumHP = 50, Sprite = species.Sprite },
+                Opponent = new() { Id = Guid.NewGuid(), Name = "Practice", Level = 12, HP = 30, MaximumHP = 60 },
+                Moves = [new() { Slot = 0, Name = "Practice Hit", Type = "Custom", Category = "Physical", PP = 19, MaximumPP = 20, Usable = true },
+                    new() { Slot = 1, Name = "Status test", Type = "Custom", Category = "Status", PP = 20, MaximumPP = 20, UnavailableReason = "Effect not implemented" }],
+                Messages = ["Practice battle started."],
+            };
+            try
+            {
+                var handlerType = typeof(Player).Assembly.GetType("Intersect.Client.Networking.PacketHandler")!;
+                var packetHandler = RuntimeHelpers.GetUninitializedObject(handlerType);
+                var applyBattle = handlerType.GetMethod("HandlePacket", [typeof(Intersect.Network.IPacketSender), typeof(MonsterBattleStatePacket)])!;
+                var state = BattleState(1, 1);
+                applyBattle.Invoke(packetHandler, [null, state]);
+                battleWindow.Update();
+                for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
+                Label BattleLabel(string name) => Descendants(battleWindow).OfType<Label>().Single(label => label.Name == name);
+                Assert.That(BattleLabel("PlayerHP").Text, Is.EqualTo("HP 25 / 50"));
+                Assert.That(((ProgressBar)BattleLabel("PlayerHP")).Value, Is.EqualTo(.5f));
+                Assert.That(BattleLabel("BattleMove0").Text, Is.EqualTo("Practice Hit \u2014 Custom / Physical \u2014 PP 19/20"));
+                Assert.That(((Button)BattleLabel("BattleMove1")).IsDisabled, Is.True);
+                // The first draw loads saved layout after Update has rendered the opening snapshot.
+                // Saved control enablement from a different monster must never replace battle legality.
+                var savedLayout = JObject.Parse(battleWindow.GetJsonUI(true));
+                savedLayout.SelectTokens("$..BattleMove0").Single()["Disabled"] = true;
+                savedLayout.SelectTokens("$..BattleMove1").Single()["Disabled"] = false;
+                savedLayout.SelectTokens("$..CloseBattleButton").Single()["Disabled"] = false;
+                void ReloadBattleLayout()
+                {
+                    content.LayoutJson = savedLayout.ToString();
+                    battleWindow.LoadJsonUi(GameContentManager.UI.InGame, $"{width}x{height}", saveOutput: false);
+                    content.LayoutJson = null;
+                }
+                ReloadBattleLayout();
+                Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.False);
+                Assert.That(((Button)BattleLabel("BattleMove1")).IsDisabled, Is.True);
+                Assert.That(((Button)BattleLabel("CloseBattleButton")).IsDisabled, Is.True);
+                var submit = typeof(MonsterBattleWindow).GetMethod("Submit", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                submit.Invoke(battleWindow, [1, false]); Assert.That(sent, Is.Empty);
+                submit.Invoke(battleWindow, [0, false]); submit.Invoke(battleWindow, [0, false]);
+                Assert.That(sent.Count, Is.EqualTo(1));
+                Assert.That(sent[0].BattleId, Is.EqualTo(battleId));
+                Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.True);
+                ReloadBattleLayout();
+                Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.True);
+                Assert.That(((Button)BattleLabel("BattleMove1")).IsDisabled, Is.True);
+                var foreign = BattleState(2, 2); foreign.PlayerId = Guid.NewGuid();
+                applyBattle.Invoke(packetHandler, [null, foreign]); Assert.That(player.MonsterBattleState, Is.SameAs(state));
+                var newer = BattleState(3, 2); applyBattle.Invoke(packetHandler, [null, newer]);
+                applyBattle.Invoke(packetHandler, [null, state]); Assert.That(player.MonsterBattleState, Is.SameAs(newer));
+                battleWindow.Update(); Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.False);
+                var endState = BattleState(4, 2, MonsterBattleOutcome.Victory); applyBattle.Invoke(packetHandler, [null, endState]); battleWindow.Update();
+                Assert.That(((Button)BattleLabel("CloseBattleButton")).IsDisabled, Is.False);
+                Assert.That(((Button)BattleLabel("ForfeitButton")).IsDisabled, Is.True);
+                battleWindow.Hide(); battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                player.MonsterBattleState = null; battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
+            }
+            finally { Intersect.Client.Interface.Interface.InputBlockingComponents.Remove(battleWindow); }
 
         }
         finally
@@ -240,7 +306,13 @@ public class MonsterRosterLayoutTests
         private readonly IGameTexture _texture = DispatchProxy.Create<IGameTexture, TextureStub>();
         public override IGameTexture? GetTexture(TextureType type, string name) => type == TextureType.Entity ? _texture : null;
         public override IFont? GetFont(string? name) => Font;
-        public override bool GetLayout(UI stage, string name, string resolution, bool skipCache, Action<string, bool> layoutHandler) => false;
+        public string? LayoutJson { get; set; }
+        public override bool GetLayout(UI stage, string name, string resolution, bool skipCache, Action<string, bool> layoutHandler)
+        {
+            if (LayoutJson == null) return false;
+            layoutHandler(LayoutJson, true);
+            return true;
+        }
         public override void SaveUIJson(UI stage, string name, string json, string? resolution) { }
         protected override TAsset Load<TAsset>(Dictionary<string, IAsset> lookup, ContentType contentType, string assetName, Func<Stream> createStream) => throw new NotSupportedException();
         public override void LoadTexturePacks() { }

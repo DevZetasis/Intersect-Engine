@@ -34,4 +34,4 @@ The server refuses nature deletion if authoritative ownership data contains the 
 
 Assigned UUIDs and initialized IVs are immutable through ordinary persistence. There is still no administrative nature reassignment command. A future authorized operation for unassigned legacy monsters must explicitly preserve existing assigned UUIDs, validate the chosen definition (including intentional zero-weight choices), coordinate with deletion and use concurrency protection.
 
-Derived stats use the current nature definition at each calculation/inspection; edits do not reroll the assigned UUID. Active battle snapshots remain a future requirement; no battle sessions exist. See monster-stat-calculations.md for supported calculations and limitations.
+Derived stats use the current nature definition at each calculation/inspection; edits do not reroll the assigned UUID. Milestone 6C practice battles copy derived stats and applicable definitions at initialization, so edits do not change an active session. See monster-stat-calculations.md for the calculation subset and monster-battles.md for the session lifecycle and limitations.

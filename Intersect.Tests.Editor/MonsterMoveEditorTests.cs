@@ -45,12 +45,15 @@ public class MonsterMoveEditorTests
             editor.PerformLayout();
             var fields = Field<TableLayoutPanel>(editor, "_fields");
             fields.PerformLayout();
-            foreach (var name in new[] { "_power", "_accuracy", "_priority" })
+            foreach (var name in new[] { "_power", "_accuracy", "_priority", "_pp" })
             {
                 Assert.That(Field<NumericUpDown>(editor, name).Height, Is.GreaterThanOrEqualTo(20));
                 Assert.That(Field<NumericUpDown>(editor, name).Width, Is.GreaterThanOrEqualTo(100));
             }
+            Field<NumericUpDown>(editor, "_pp").Value = 35;
             Field<TextBox>(editor, "_name").Text = "Edited";
+            Assert.That(Field<NumericUpDown>(editor, "_pp").Value, Is.EqualTo(35));
+            Assert.That(source.MaximumPP, Is.EqualTo(20));
             Field<TextBox>(editor, "_description").Text = "Custom move description";
             Field<ComboBox>(editor, "_category").SelectedIndex = (int)MonsterMoveCategory.Special;
             Field<NumericUpDown>(editor, "_power").Value = 81;

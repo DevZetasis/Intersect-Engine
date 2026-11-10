@@ -947,9 +947,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.MonsterMove:
                     using (var gameDb = DbInterface.CreateGameContext())
                     {
-                        if (MonsterMoveRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray()))
+                        if (MonsterMoveAssignment.IsAssigned(id, () => DbInterface.CreatePlayerContext()) || MonsterMoveRules.IsReferenced(id, gameDb.MonsterSpecies.AsNoTracking().ToArray()))
                         {
-                            PacketSender.SendError(client, "This move is referenced by species learnsets. Remove those references before deleting it.", "Monster Move");
+                            PacketSender.SendError(client, "This move is referenced by owned monsters or species learnsets. Remove those references before deleting it.", "Monster Move");
                             return;
                         }
                     }

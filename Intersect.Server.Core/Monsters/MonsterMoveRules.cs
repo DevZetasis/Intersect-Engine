@@ -7,7 +7,7 @@ public static class MonsterMoveRules
     public static void Validate(MonsterMoveDescriptor move, Func<Guid, bool> typeExists, Func<Guid, bool> animationExists)
     {
         if (!move.IsValid || !typeExists(move.TypeId) || (move.AnimationId is { } animation && !animationExists(animation)))
-            throw new InvalidOperationException("A move needs a name, an existing type, valid category/target, positive damaging power, accuracy 1�100, and an existing optional animation.");
+            throw new InvalidOperationException("A move needs a name, an existing type, valid category/target, positive damaging power, Maximum PP 1–999, accuracy 1–100, and an existing optional animation.");
     }
     public static void ValidateLearnset(MonsterSpeciesDescriptor species, Func<Guid, bool> moveExists)
     {

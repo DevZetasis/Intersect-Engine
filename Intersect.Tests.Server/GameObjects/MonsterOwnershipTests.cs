@@ -78,6 +78,65 @@ public class MonsterOwnershipTests
     }
 
     [Test]
+    public void NormallyCreatedCharacterCanSaveLazySlotsAndMonstersAcrossReconnects()
+    {
+        // Exercise the real character-add and account-save paths against this fixture's database.
+        // Never use the server's configured resource directory or a development database.
+        var previousDirectory = Intersect.Server.Core.ServerContext.ResourceDirectory;
+        var previousType = Options.Instance.PlayerDatabase.Type;
+        try
+        {
+            Intersect.Server.Core.ServerContext.ResourceDirectory = _directory;
+            Options.Instance.PlayerDatabase.Type = DatabaseType.SQLite;
+            var account = new User { Name = "normal-creation", Email = "normal@example.invalid" };
+            using (var db = CreateContext()) { db.Users.Add(account); db.SaveChanges(); }
+            var character = new Player { Id = Guid.NewGuid(), Name = "NormalTrainer" };
+            character.ValidateLists();
+            // CreateCharacterPacket explicitly marks all equipment slots unequipped.
+            Array.Fill(character.Equipment, -1);
+            Assert.That(account.TryAddCharacter(character), Is.True);
+
+            // Join-game packets materialize these lazy collections after character creation.
+            for (var i = 0; i < character.Items.Capacity; i++) _ = character.Items[i];
+            for (var i = 0; i < character.Spells.Capacity; i++) _ = character.Spells[i];
+            for (var i = 0; i < character.Hotbar.Capacity; i++) _ = character.Hotbar[i];
+            var monster = Service().Grant(character.Id, _species, Guid.NewGuid());
+            using (var db = CreateContext())
+                Assert.That(account.Save(db, force: true), Is.EqualTo(UserSaveResult.Completed));
+
+            for (var reconnect = 0; reconnect < 2; reconnect++)
+            {
+                using (var db = CreateContext())
+                    account = db.Users.Include(user => user.Players).Single(user => user.Id == account.Id);
+                character = account.Players.Single();
+                // Character list and selection each load relationships using short-lived contexts.
+                using (var db = CreateContext()) character.LoadRelationships(db);
+                using (var db = CreateContext()) character.LoadRelationships(db);
+                character.Bank.FillToCapacity();
+                character.Items[0].Quantity = 7;
+                using (var db = CreateContext())
+                    Assert.That(account.Save(db, force: true), Is.EqualTo(UserSaveResult.Completed));
+                using var reopened = CreateContext();
+                Assert.That(reopened.Player_Items.Count(slot => slot.PlayerId == character.Id), Is.EqualTo(character.Items.Capacity));
+                Assert.That(reopened.Player_Spells.Count(slot => slot.PlayerId == character.Id), Is.EqualTo(character.Spells.Capacity));
+                Assert.That(reopened.Player_Hotbar.Count(slot => slot.PlayerId == character.Id), Is.EqualTo(character.Hotbar.Capacity));
+                Assert.That(reopened.Player_Bank.Count(slot => slot.PlayerId == character.Id), Is.EqualTo(character.Bank.Capacity));
+                Assert.That(reopened.Player_Items.Single(slot => slot.PlayerId == character.Id && slot.Slot == 0).Quantity, Is.EqualTo(7));
+                var owned = Service().GetOwned(character.Id).Single();
+                Assert.That(owned.Id, Is.EqualTo(monster.Id));
+                Assert.That(owned.Location, Is.EqualTo(MonsterLocation.Party));
+            }
+        }
+        finally
+        {
+            Intersect.Server.Core.ServerContext.ResourceDirectory = previousDirectory;
+            Options.Instance.PlayerDatabase.Type = previousType;
+            // The production context factory enables SQLite pooling; release its test-file handles.
+            SqliteConnection.ClearAllPools();
+        }
+    }
+
+    [Test]
     public void GrantCreatesIndependentIndividualsOwnedByCharactersOnSameAccount()
     {
         var first = Service().Grant(_first, _species, Guid.NewGuid());
@@ -241,7 +300,7 @@ public class MonsterOwnershipTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsters();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterMoveSlots().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -274,6 +333,6 @@ public class MonsterOwnershipTests
         var move = new MoveOwnedMonsterPacket { MonsterId = monster.Id, ExpectedRevision = monster.Revision, Destination = MonsterLocation.Storage };
         Assert.That(MessagePacker.Instance.Deserialize<MoveOwnedMonsterPacket>(MessagePacker.Instance.Serialize(move))!.ExpectedRevision, Is.EqualTo(monster.Revision));
         Assert.That(MessagePacker.Instance.Deserialize<RequestOwnedMonstersPacket>(MessagePacker.Instance.Serialize(new RequestOwnedMonstersPacket())), Is.Not.Null);
-        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v1"));
     }
 }

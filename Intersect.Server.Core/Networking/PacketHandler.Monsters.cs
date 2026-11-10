@@ -7,6 +7,14 @@ namespace Intersect.Server.Networking;
 
 internal sealed partial class PacketHandler
 {
+    public void HandlePacket(Client client, MonsterBattleActionPacket packet)
+    {
+        if (client.IsEditor || client.Entity is not { InGame: true } player) return;
+        try { Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Submit(player.Id, packet); }
+        catch (InvalidOperationException exception) { Logger.LogDebug("Rejected monster battle action: {Reason}", exception.Message); }
+        catch (Exception exception) { Logger.LogError(exception, "Monster battle resolution failed for {PlayerId}", player.Id); }
+    }
+
     public void HandlePacket(Client client, RequestOwnedMonstersPacket packet)
     {
         if (!client.IsEditor && client.Entity is { InGame: true } player) MonsterRoster.Send(player);
@@ -18,7 +26,11 @@ internal sealed partial class PacketHandler
         var message = string.Empty;
         try
         {
-            MonsterRoster.CreateService().Move(player.Id, packet.MonsterId, packet.ExpectedRevision, packet.Destination);
+            lock (Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.SyncRoot)
+            {
+                if (Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.HasActive(player.Id)) throw new InvalidOperationException("Finish or forfeit the monster battle before moving your monsters.");
+                MonsterRoster.CreateService().Move(player.Id, packet.MonsterId, packet.ExpectedRevision, packet.Destination);
+            }
             Logger.LogInformation("Accepted monster move for {PlayerId}: monster {MonsterId}, destination {Destination}, expected revision {Revision}",
                 player.Id, packet.MonsterId, packet.Destination, packet.ExpectedRevision);
         }

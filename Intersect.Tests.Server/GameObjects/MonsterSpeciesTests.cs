@@ -202,7 +202,7 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterNatures().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMovePP().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
         Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");

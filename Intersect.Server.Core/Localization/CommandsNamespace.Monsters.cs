@@ -7,6 +7,16 @@ public static partial class Strings
 {
     public sealed partial class CommandsNamespace
     {
+        public readonly LocaleCommand StartMonsterBattle = new()
+        {
+            Name = "startmonsterbattle", Help = "Start a private 1v1 practice monster battle (console only)",
+            Description = "startmonsterbattle <character-name-or-UUID> <owned-monster-UUID> <opponent-species-UUID> <opponent-level>",
+        };
+        public readonly LocaleCommand CancelMonsterBattle = new()
+        {
+            Name = "cancelmonsterbattle", Help = "Cancel a practice battle (console only)",
+            Description = "cancelmonsterbattle <battle-UUID>",
+        };
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public readonly LocaleCommand InspectMonster = new()
         {

@@ -93,6 +93,7 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.MaximumPP).HasDefaultValue(20);
         modelBuilder.Entity<EquipmentProperties>()
             .HasOne(property => property.Descriptor)
             .WithOne(item => item.EquipmentProperties)

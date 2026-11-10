@@ -2,6 +2,8 @@
 
 This is a server-only calculation foundation, not a complete Generation 4 simulator or move executor. Trainer combat, editors, species learnsets and individual learned-move inventories are unchanged.
 
+Milestone 6C now uses this foundation for snapshotted practice sessions and persistent individual move slots; see [monster-battles.md](monster-battles.md). The historical calculation subset below remains unchanged; complete move effects and advanced battle mechanics are still deferred.
+
 ## Persistent attributes
 
 OwnedMonsters adds nullable NatureId and six scalar IV columns (IvHP, IvAttack, IvDefense, IvSpecialAttack, IvSpecialDefense, IvSpeed), plus the corresponding Ev columns. IVs are always 0�31. Each committed new grant draws six uniform IVs once, starts at zero EVs, and samples a valid positive-weight nature. The request UUID lookup precedes every draw. Moving, reading, nicknames, restarts and retries do not generate attributes. Initial IVs and nature UUID cannot be changed through ordinary persistence.

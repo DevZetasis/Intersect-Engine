@@ -7,6 +7,7 @@ namespace Intersect.Server.Database.PlayerData;
 
 public abstract partial class PlayerContext
 {
+    public Func<Guid, bool>? MonsterMoveExists { get; set; }
     public MonsterBattleRules MonsterRules { get; set; } = Options.Instance?.Monsters?.Battle ?? MonsterBattleRules.Generation4;
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -26,6 +27,11 @@ public abstract partial class PlayerContext
         foreach (var entry in ChangeTracker.Entries<MonsterInstance>().Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
             MonsterStatCalculator.ValidateIVs(entry.Entity.IVs);
+            if (MonsterMoveExists != null && (entry.State == EntityState.Added || entry.Properties.Any(property =>
+                    property.Metadata.Name.StartsWith("Move", StringComparison.Ordinal) && !Equals(property.OriginalValue, property.CurrentValue))) &&
+                entry.Entity.MoveIds.Any(id => id is { } value && !MonsterMoveExists(value)))
+                throw new InvalidOperationException("An assigned monster move does not exist.");
+            Intersect.Server.Monsters.MonsterMoveAssignment.Validate(entry.Entity.MoveIds);
             var evsChanged = entry.State == EntityState.Added || entry.Properties.Any(property =>
                 property.Metadata.Name.StartsWith("Ev", StringComparison.Ordinal) && !Equals(property.OriginalValue, property.CurrentValue));
             // Lowering configured EV caps must not prevent metadata/placement saves or truncate an existing profile.

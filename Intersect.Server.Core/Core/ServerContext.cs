@@ -141,6 +141,7 @@ internal partial class ServerContext : ApplicationContext<ServerContext, ServerC
             ApplicationContext.Context.Value?.Logger.LogInformation("Online users/players saved." + $" ({stopwatch.ElapsedMilliseconds}ms)");
 
 
+            Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.CancelAll();
             // Disconnect All Clients
             // Will kill their packet handling threads so we have a clean shutdown
             lock (Client.GlobalLock)

@@ -78,6 +78,11 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
         monsters.HasIndex(monster => new { monster.OwnerPlayerId, monster.Location, monster.Slot }).IsUnique();
         monsters.Property(monster => monster.Revision).IsConcurrencyToken();
         monsters.HasIndex(monster => monster.NatureId);
+        monsters.HasIndex(monster => monster.Move1Id);
+        monsters.HasIndex(monster => monster.Move2Id);
+        monsters.HasIndex(monster => monster.Move3Id);
+        monsters.HasIndex(monster => monster.Move4Id);
+        monsters.Property(monster => monster.MovesInitialized).HasDefaultValue(false);
         monsters.Property(monster => monster.IvHP).HasDefaultValue(0);
         monsters.Property(monster => monster.IvAttack).HasDefaultValue(0);
         monsters.Property(monster => monster.IvDefense).HasDefaultValue(0);

@@ -16,6 +16,7 @@ public static class MonsterDiagnostics
             $"Placement: {monster.Location} #{monster.Slot + 1}",
             monster.NatureId == null ? "Nature: neutral/unassigned" : $"Nature: {nature?.Name ?? "Missing definition"} ({monster.NatureId})",
             "Order: HP / Attack / Defense / Special Attack / Special Defense / Speed",
+            "Move slots: " + (monster.MovesInitialized ? string.Join(" / ", monster.MoveIds.Select(id => id?.ToString() ?? "Empty")) : "Pending one-time learnset initialization"),
             "IVs: " + string.Join(" / ", monster.IVs.ToArray()),
             "EVs: " + string.Join(" / ", monster.EVs.ToArray()),
         };

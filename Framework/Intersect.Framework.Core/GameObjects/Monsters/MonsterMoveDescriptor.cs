@@ -18,6 +18,7 @@ public sealed class MonsterMoveDescriptor : DatabaseObject<MonsterMoveDescriptor
     public Guid TypeId { get; set; }
     public MonsterMoveCategory Category { get; set; } = MonsterMoveCategory.Physical;
     public int BasePower { get; set; } = 1;
+    public int MaximumPP { get; set; } = 20;
     public int Accuracy { get; set; } = 100;
     public bool AlwaysHits { get; set; }
     public int Priority { get; set; }
@@ -27,11 +28,16 @@ public sealed class MonsterMoveDescriptor : DatabaseObject<MonsterMoveDescriptor
     public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Folder != null &&
         TypeId != Guid.Empty && Enum.IsDefined(Category) && Enum.IsDefined(Target) &&
         BasePower >= (Category == MonsterMoveCategory.Status ? 0 : 1) && Accuracy is >= 1 and <= 100 &&
-        AnimationId != Guid.Empty;
+        MaximumPP is >= 1 and <= 999 && AnimationId != Guid.Empty;
     public override void Load(string json, bool keepCreationTime = false)
     {
         var id = Id;
-        try { base.Load(json, keepCreationTime); }
+        try
+        {
+            if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(MaximumPP), StringComparison.OrdinalIgnoreCase) == null)
+                MaximumPP = 20;
+            base.Load(json, keepCreationTime);
+        }
         finally { Id = id; }
     }
 }

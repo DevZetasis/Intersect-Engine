@@ -31,6 +31,7 @@ public partial class GameInterface : MutableInterface
 
     //Public Components - For clicking/dragging
     public HotBarWindow Hotbar;
+    private Monsters.MonsterBattleWindow _monsterBattleWindow;
 
     private AdminWindow? mAdminWindow;
 
@@ -150,6 +151,7 @@ public partial class GameInterface : MutableInterface
         mChatBox = new Chatbox(GameCanvas, this);
         GameMenu = new MenuContainer(GameCanvas);
         Hotbar = new HotBarWindow(GameCanvas);
+        _monsterBattleWindow = new Monsters.MonsterBattleWindow(GameCanvas);
         PlayerBox = new EntityBox(GameCanvas, EntityType.Player, Globals.Me, true);
         PlayerBox.SetEntity(Globals.Me);
         PlayerStatusWindow = new PlayerStatusWindow(GameCanvas);
@@ -349,6 +351,7 @@ public partial class GameInterface : MutableInterface
         GameMenu?.Update(mShouldUpdateQuestLog);
         mShouldUpdateQuestLog = false;
         Hotbar?.Update();
+        _monsterBattleWindow?.Update();
         EscapeMenu.Update();
         PlayerBox?.Update();
         PlayerStatusWindow?.Update();

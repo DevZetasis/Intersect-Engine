@@ -446,6 +446,7 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.Property<int>("Target")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("MaximumPP").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(20);
                     b.HasKey("Id");
 
                     b.ToTable("MonsterMoves");

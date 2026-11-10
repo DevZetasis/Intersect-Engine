@@ -471,6 +471,7 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.Property<int>("Target")
                         .HasColumnType("int");
 
+                    b.Property<int>("MaximumPP").ValueGeneratedOnAdd().HasColumnType("int").HasDefaultValue(20);
                     b.HasKey("Id");
 
                     b.ToTable("MonsterMoves");

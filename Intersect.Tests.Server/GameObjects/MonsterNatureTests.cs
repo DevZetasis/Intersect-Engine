@@ -195,8 +195,10 @@ public class MonsterNatureTests
             using (var db = new SqliteGameContext(options))
             {
                 db.GetService<IMigrator>().Migrate("20261108020000_AddMonsterMoves");
-                db.AddRange(type, move, species);
-                db.SaveChanges();
+                // Seed the historical schema directly: the current EF model includes later PP columns.
+                db.Database.ExecuteSqlInterpolated($"INSERT INTO MonsterTypes (Id, Name, Description, Folder, DisplayColor, TimeCreated, Effectiveness) VALUES ({type.Id}, {type.Name}, {type.Description}, {type.Folder}, {type.DisplayColor}, {type.TimeCreated}, {type.EffectivenessJson})");
+                db.Database.ExecuteSqlInterpolated($"INSERT INTO MonsterMoves (Id, Name, Description, Folder, TimeCreated, TypeId, Category, BasePower, Accuracy, AlwaysHits, Priority, Target, AnimationId) VALUES ({move.Id}, {move.Name}, {move.Description}, {move.Folder}, {move.TimeCreated}, {move.TypeId}, {(int)move.Category}, {move.BasePower}, {move.Accuracy}, {move.AlwaysHits}, {move.Priority}, {(int)move.Target}, {move.AnimationId})");
+                db.Database.ExecuteSqlInterpolated($"INSERT INTO MonsterSpecies (Id, Name, Description, Sprite, Folder, TimeCreated, BaseStats, Types, Learnset) VALUES ({species.Id}, {species.Name}, {species.Description}, {species.Sprite}, {species.Folder}, {species.TimeCreated}, {species.BaseStatsJson}, {species.TypeIdsJson}, {species.LearnsetJson})");
                 db.Database.Migrate();
                 Assert.That(db.Database.HasPendingModelChanges(), Is.False);
                 Assert.That(db.MonsterNatures.Count(), Is.Zero, "No predefined natures are seeded.");
@@ -262,7 +264,7 @@ public class MonsterNatureTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_natures", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterNatures();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMovePP().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         Assert.That(migration.UpOperations.Count, Is.EqualTo(1));

@@ -112,6 +112,7 @@ public static partial class DbInterface
 
     private static GameContext ConfigureMonsterReferences(GameContext context)
     {
+        context.MoveReferenceExists = id => Intersect.Server.Monsters.MonsterMoveAssignment.IsAssigned(id, () => CreatePlayerContext());
         context.NatureReferenceExists = id => Intersect.Server.Monsters.MonsterNatureReferences.IsAssigned(id, () => CreatePlayerContext());
         return context;
     }
@@ -1409,7 +1410,7 @@ public static partial class DbInterface
 
     public static void DeleteGameObject(IDatabaseObject gameObject)
     {
-        if (gameObject is MonsterNatureDescriptor)
+        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor)
         {
             lock (Intersect.Server.Monsters.MonsterTypeRules.ContentGate) DeleteGameObjectCore(gameObject);
         }
@@ -1452,6 +1453,7 @@ public static partial class DbInterface
                         context.MonsterNatures.Remove((MonsterNatureDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterMove:
+                        Intersect.Server.Monsters.MonsterMoveAssignment.EnsureUnreferenced(gameObject.Id, () => CreatePlayerContext());
                         if (Intersect.Server.Monsters.MonsterMoveRules.IsReferenced(gameObject.Id, context.MonsterSpecies.AsNoTracking().ToArray()))
                             throw new InvalidOperationException("This monster move is referenced by species learnsets.");
                         context.MonsterMoves.Remove((MonsterMoveDescriptor)gameObject);
@@ -2489,7 +2491,7 @@ public static partial class DbInterface
     }
 
     //Code taken from Stackoverflow on 9/20/2018
-    //Answer by Dai and Damian Leszczyński - Vash
+    //Answer by Dai and Damian LeszczyÅ„ski - Vash
     //https://stackoverflow.com/questions/3404421/password-masking-console-application
     public static string GetPassword()
     {

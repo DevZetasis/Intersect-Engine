@@ -20,14 +20,19 @@ public sealed class MonsterOwnershipService
     private readonly Func<IEnumerable<MonsterNatureDescriptor>> _natures;
     private readonly MonsterBattleRules _rules;
     private readonly ILogger _logger;
+    private readonly Func<Guid, MonsterSpeciesDescriptor?> _species;
+    private readonly Func<Guid, bool> _moveExists;
 
     public MonsterOwnershipService(Func<PlayerContext> createContext, Func<Guid, bool> speciesExists, int partyCapacity,
         IMonsterRandom? random = null, Func<IEnumerable<MonsterNatureDescriptor>>? natures = null,
-        MonsterBattleRules? rules = null, ILogger? logger = null)
+        MonsterBattleRules? rules = null, ILogger? logger = null,
+        Func<Guid, MonsterSpeciesDescriptor?>? species = null, Func<Guid, bool>? moveExists = null)
     {
         _createContext = createContext;
         _speciesExists = speciesExists;
         PartyCapacity = Math.Clamp(partyCapacity, 1, 64);
+        _species = species ?? MonsterSpeciesDescriptor.Get;
+        _moveExists = moveExists ?? (id => MonsterMoveDescriptor.Get(id) != null);
         _random = random ?? new SystemMonsterRandom();
         _natures = natures ?? (() => Array.Empty<MonsterNatureDescriptor>());
         _rules = rules ?? MonsterBattleRules.Generation4;
@@ -36,6 +41,7 @@ public sealed class MonsterOwnershipService
         {
             var context = createContext();
             context.MonsterRules = _rules;
+            context.MonsterMoveExists = _moveExists;
             return context;
         };
         _logger = logger ?? NullLogger.Instance;
@@ -45,14 +51,18 @@ public sealed class MonsterOwnershipService
 
     public OwnedMonsterSummary[] GetOwned(Guid ownerId, Func<MonsterInstance, OwnedMonsterDetails>? describe = null)
     {
+        lock (MonsterTypeRules.ContentGate)
         lock (Gate(ownerId))
         {
             using var db = _createContext();
             var owned = db.OwnedMonsters.Where(monster => monster.OwnerPlayerId == ownerId).ToArray();
+            var needsMoves = owned.Where(monster => !monster.MovesInitialized).ToArray();
+            foreach (var monster in needsMoves)
+                monster.InitializeMoves(MonsterMoveAssignment.Initial(_species(monster.SpeciesId), monster.Level, _moveExists));
             var overflow = owned.Where(monster => monster.Location == MonsterLocation.Party && monster.Slot >= PartyCapacity).ToArray();
             foreach (var monster in overflow)
                 monster.Place(MonsterLocation.Storage, FindSlot(owned, MonsterLocation.Storage, int.MaxValue));
-            if (overflow.Length > 0 && db.SaveChanges() <= 0)
+            if ((overflow.Length > 0 || needsMoves.Length > 0) && db.SaveChanges() <= 0)
                 throw new InvalidOperationException("Monster placement was not committed.");
             return owned.OrderBy(monster => monster.Location).ThenBy(monster => monster.Slot)
                 .Select(monster =>
@@ -61,6 +71,18 @@ public sealed class MonsterOwnershipService
                     summary.Details = describe?.Invoke(monster);
                     return summary;
                 }).ToArray();
+        }
+    }
+
+    public MonsterInstance GetForBattle(Guid ownerId, Guid monsterId)
+    {
+        lock (MonsterTypeRules.ContentGate)
+        lock (Gate(ownerId))
+        {
+            GetOwned(ownerId); // One-time move initialization and existing capacity normalization.
+            using var db = _createContext();
+            return db.OwnedMonsters.AsNoTracking().SingleOrDefault(monster => monster.OwnerPlayerId == ownerId && monster.Id == monsterId)
+                ?? throw new InvalidOperationException("Monster is not in your collection.");
         }
     }
 
@@ -88,6 +110,7 @@ public sealed class MonsterOwnershipService
             var ivs = MonsterAttributeGeneration.GenerateIVs(_random);
             var natureId = MonsterAttributeGeneration.SelectNature(_natures(), _random);
             var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot, ivs, natureId);
+            monster.InitializeMoves(MonsterMoveAssignment.Initial(_species(speciesId), monster.Level, _moveExists));
             db.OwnedMonsters.Add(monster);
             try
             {

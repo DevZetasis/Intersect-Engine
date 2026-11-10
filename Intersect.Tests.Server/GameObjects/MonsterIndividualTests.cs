@@ -242,7 +242,7 @@ public class MonsterIndividualTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_attrs", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterMoveSlots().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -300,6 +300,80 @@ public class MonsterIndividualTests
         Assert.That(details.NatureName, Is.Null);
         Assert.That(details.CalculatedStats, Has.Length.EqualTo(6));
         Assert.That(details.CalculationError, Is.Null);
+    }
+
+    [Test]
+    public void MoveSlotsPersistInitializeLegacyOnceAndProtectOfflineAssignments()
+    {
+        var moveIds = Enumerable.Range(1, 5).Select(i => new Guid(i, 0, 0, new byte[8])).ToArray();
+        var species = new MonsterSpeciesDescriptor(_species) { Learnset = moveIds.Select(id => new MonsterLearnsetEntry { MoveId = id, Level = 1 }).ToList() };
+        MonsterOwnershipService WithMoves() => new(Context, id => id == _species, 6, new ControlledMonsterRandom(0, 0, 0, 0, 0, 0),
+            species: _ => species, moveExists: moveIds.Contains);
+        var grant = WithMoves().Grant(_owner, _species, Guid.NewGuid());
+        Assert.Throws<InvalidOperationException>(() => WithMoves().GetForBattle(Guid.NewGuid(), grant.Id));
+        using (var db = Context())
+        {
+            var owned = db.OwnedMonsters.Single();
+            Assert.That(owned.MovesInitialized, Is.True);
+            Intersect.Server.Monsters.Battles.MonsterPracticeBattles.ValidateOwnedParty(_owner, owned);
+            Assert.Throws<InvalidOperationException>(() => Intersect.Server.Monsters.Battles.MonsterPracticeBattles.ValidateOwnedParty(Guid.NewGuid(), owned));
+            Assert.That(owned.MoveIds, Is.EqualTo(moveIds.Take(4).Cast<Guid?>().ToArray()));
+            // Simulate a future authorized saved choice, including deliberately empty slots.
+            db.MonsterMoveExists = moveIds.Contains;
+            db.Entry(owned).Property("Move1Id").CurrentValue = moveIds[4];
+            for (var i = 2; i <= 4; i++) db.Entry(owned).Property("Move" + i + "Id").CurrentValue = null;
+            db.SaveChanges();
+        }
+        species.Learnset.Clear();
+        var service = WithMoves(); service.GetOwned(_owner);
+        service.Move(_owner, grant.Id, grant.Revision, MonsterLocation.Storage);
+        using (var db = Context())
+        {
+            var owned = db.OwnedMonsters.Single();
+            Assert.That(owned.MoveIds, Is.EqualTo(new Guid?[] { moveIds[4], null, null, null }));
+            Assert.That(owned.Location, Is.EqualTo(MonsterLocation.Storage));
+            Assert.Throws<InvalidOperationException>(() => Intersect.Server.Monsters.Battles.MonsterPracticeBattles.ValidateOwnedParty(_owner, owned));
+            Assert.That(MonsterMoveAssignment.IsAssigned(moveIds[4], Context), Is.True);
+            Assert.Throws<InvalidOperationException>(() => MonsterMoveAssignment.EnsureUnreferenced(moveIds[4], Context));
+            db.MonsterMoveExists = moveIds.Contains;
+            db.Entry(owned).Property("Move2Id").CurrentValue = moveIds[4];
+            Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+            db.Entry(owned).Property("Move2Id").CurrentValue = Guid.NewGuid();
+            Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+        }
+        using (var db = Context())
+        {
+            db.GetService<IMigrator>().Migrate("20261108040000_AddMonsterAttributes");
+            db.Database.Migrate();
+            Assert.That(db.Database.HasPendingModelChanges(), Is.False);
+            Assert.That(db.OwnedMonsters.Single().MovesInitialized, Is.False);
+        }
+        species.Learnset.Add(new() { MoveId = moveIds[0], Level = 1 });
+        WithMoves().GetOwned(_owner);
+        species.Learnset.Clear();
+        WithMoves().GetOwned(_owner);
+        using (var db = Context())
+        {
+            var owned = db.OwnedMonsters.Single();
+            Assert.That(owned.MoveIds, Is.EqualTo(new Guid?[] { moveIds[0], null, null, null }));
+            Assert.That(owned.IVs, Is.EqualTo(new MonsterStatValues()));
+            Assert.That(owned.Id, Is.EqualTo(grant.Id));
+        }
+        using var game = new SqliteGameContext(new DatabaseContextOptions
+        {
+            DatabaseType = DatabaseType.Sqlite, AutoDetectChanges = true,
+            ConnectionStringBuilder = new SqliteConnectionStringBuilder { DataSource = Path.Combine(_directory, "moves-game.db"), Pooling = false },
+        });
+        game.Database.Migrate();
+        Assert.That(game.Database.HasPendingModelChanges(), Is.False);
+        var type = new MonsterTypeDescriptor(Guid.NewGuid());
+        var move = new MonsterMoveDescriptor(moveIds[0]) { TypeId = type.Id, MaximumPP = 35 };
+        game.MonsterTypes.Add(type); game.MonsterMoves.Add(move); game.SaveChanges();
+        game.MoveReferenceExists = id => MonsterMoveAssignment.IsAssigned(id, Context);
+        game.MonsterMoves.Remove(move);
+        Assert.Throws<InvalidOperationException>(() => game.SaveChanges());
+        game.Entry(move).State = EntityState.Unchanged;
+        Assert.That(game.MonsterMoves.AsNoTracking().Single().MaximumPP, Is.EqualTo(35));
     }
 
     private sealed class OfflineMySql(DatabaseContextOptions options) : PlayerContext(options)

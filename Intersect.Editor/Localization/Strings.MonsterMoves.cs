@@ -15,6 +15,7 @@ public static partial class Strings
         public static LocalizedString Physical = "Physical";
         public static LocalizedString Special = "Special";
         public static LocalizedString Status = "Status";
+        public static LocalizedString MaximumPP = "Maximum PP (1–999)";
         public static LocalizedString Power = "Base Power";
         public static LocalizedString Accuracy = "Accuracy (%)";
         public static LocalizedString AlwaysHits = "Always hits (ignore accuracy)";
@@ -27,8 +28,8 @@ public static partial class Strings
         public static LocalizedString AllBattlefield = "All monsters on the battlefield";
         public static LocalizedString Animation = "Animation (optional)";
         public static LocalizedString Missing = "Missing reference ({00})";
-        public static LocalizedString Invalid = "Enter a name, an existing type, valid category/target, positive damaging power, accuracy 1�100, and an existing optional animation.";
-        public static LocalizedString DeletePrompt = "Delete this move? Moves referenced by species learnsets cannot be deleted.";
+        public static LocalizedString Invalid = "Enter a name, an existing type, valid category/target, positive damaging power, Maximum PP 1–999, accuracy 1–100, and an existing optional animation.";
+        public static LocalizedString DeletePrompt = "Delete this move? Moves referenced by species learnsets or owned monsters cannot be deleted.";
         public static LocalizedString Learnset = "Level Learnset";
         public static LocalizedString LearnLevel = "Learn Level";
         public static LocalizedString Move = "Move";

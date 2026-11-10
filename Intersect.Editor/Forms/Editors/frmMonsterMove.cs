@@ -23,6 +23,7 @@ public sealed class FrmMonsterMove : EditorForm
     private readonly DarkComboBox _target = Choice();
     private readonly DarkComboBox _animation = Choice();
     private readonly DarkNumericUpDown _power = new() { Minimum = 0, Maximum = int.MaxValue, Value = 1 };
+    private readonly DarkNumericUpDown _pp = new() { Minimum = 1, Maximum = 999, Value = 20 };
     private readonly DarkNumericUpDown _accuracy = new() { Minimum = 1, Maximum = 100, Value = 100 };
     private readonly DarkCheckBox _alwaysHits = new() { Text = Strings.MonsterMoveEditor.AlwaysHits, AutoSize = true };
     private readonly DarkNumericUpDown _priority = new() { Minimum = int.MinValue, Maximum = int.MaxValue };
@@ -61,6 +62,7 @@ public sealed class FrmMonsterMove : EditorForm
         AddField(Strings.MonsterMoveEditor.Type, _type);
         AddField(Strings.MonsterMoveEditor.Category, _category);
         AddField(Strings.MonsterMoveEditor.Power, _power);
+        AddField(Strings.MonsterMoveEditor.MaximumPP, _pp);
         AddField(Strings.MonsterMoveEditor.Accuracy, _accuracy);
         AddField(string.Empty, _alwaysHits);
         AddField(Strings.MonsterMoveEditor.Priority, _priority);
@@ -78,7 +80,7 @@ public sealed class FrmMonsterMove : EditorForm
         _name.TextChanged += EditFields;
         _description.TextChanged += EditFields;
         foreach (var choice in new[] { _type, _category, _target, _animation }) choice.SelectedIndexChanged += EditFields;
-        foreach (var number in new[] { _power, _accuracy, _priority }) number.ValueChanged += EditFields;
+        foreach (var number in new[] { _power, _accuracy, _priority, _pp }) number.ValueChanged += EditFields;
         _alwaysHits.CheckedChanged += EditFields;
         FormClosed += (_, _) => Globals.CurrentEditor = -1;
     }
@@ -169,6 +171,7 @@ public sealed class FrmMonsterMove : EditorForm
             _category.SelectedIndex = (int)_selected.Category;
             _power.Minimum = _selected.Category == MonsterMoveCategory.Status ? 0 : 1;
             _power.Value = _selected.BasePower;
+            _pp.Value = _selected.MaximumPP;
             _accuracy.Value = _selected.Accuracy;
             _alwaysHits.Checked = _selected.AlwaysHits;
             _accuracy.Enabled = !_selected.AlwaysHits;
@@ -188,6 +191,7 @@ public sealed class FrmMonsterMove : EditorForm
         try { _power.Minimum = _selected.Category == MonsterMoveCategory.Status ? 0 : 1; }
         finally { _loading = false; }
         _selected.BasePower = (int)_power.Value;
+        _selected.MaximumPP = (int)_pp.Value;
         _selected.Accuracy = (int)_accuracy.Value;
         _selected.AlwaysHits = _alwaysHits.Checked;
         _accuracy.Enabled = !_alwaysHits.Checked;

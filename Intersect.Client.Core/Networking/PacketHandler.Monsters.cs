@@ -6,6 +6,12 @@ namespace Intersect.Client.Networking;
 
 internal sealed partial class PacketHandler
 {
+    public void HandlePacket(IPacketSender sender, MonsterBattleStatePacket packet)
+    {
+        if (Globals.Me is not { } player || player.Id != packet.PlayerId || packet.Sequence <= player.LastMonsterBattleSequence) return;
+        player.LastMonsterBattleSequence = packet.Sequence;
+        player.MonsterBattleState = packet;
+    }
     public void HandlePacket(IPacketSender sender, OwnedMonstersPacket packet)
     {
         // Discard snapshots queued for a previous character after character selection.
