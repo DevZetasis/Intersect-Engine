@@ -6,7 +6,7 @@ using Intersect.Framework.Core.GameObjects.Monsters;
 namespace Intersect.Server.Database.PlayerData.Players;
 
 /// <summary>Persistent ownership, independent of map entities and the autosaved player graph.</summary>
-public sealed class MonsterInstance
+public sealed partial class MonsterInstance
 {
     private MonsterInstance() { }
 

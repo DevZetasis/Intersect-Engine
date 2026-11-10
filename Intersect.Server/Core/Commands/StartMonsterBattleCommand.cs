@@ -27,7 +27,7 @@ internal sealed class StartMonsterBattleCommand : ServerCommand
             var player = Guid.TryParse(character, out var owner) ? Player.FindOnline(owner) : Player.FindOnline(character);
             if (player == null) throw new InvalidOperationException("Character must be online and in game.");
             var battle = MonsterPracticeBattles.Start(player, monster, opponent, level);
-            Console.WriteLine($"Started practice battle {battle}. No persistent HP, PP or rewards are written.");
+            Console.WriteLine($"Started practice battle {battle}. Owned HP/PP commits after each resolved turn. No rewards are awarded.");
         }
         catch (InvalidOperationException exception) { Console.WriteLine($"Practice battle refused: {exception.Message}"); }
         catch (Exception exception) { context.Logger.LogError(exception, "Practice battle start failed"); Console.WriteLine("Practice battle start failed. Check the server log."); }

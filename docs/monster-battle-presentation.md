@@ -1,5 +1,7 @@
 # Milestone 6D: classic monster battle presentation
 
+Milestone 6E supersedes the temporary owned HP/PP policy described here. See [persistent monster condition](monster-condition.md) for persistence, healing and matching-build instructions.
+
 ## Delivered behavior
 
 The existing practice resolver remains authoritative and resolves the entire turn before publication. Its damage formulas, IV/EV/nature/type calculations, RNG calls, priority/Speed ordering, PP consumption, opponent provider, ownership checks and terminal/disconnect cleanup remain in place. Original Intersect combat and the roster/HUD are retained.

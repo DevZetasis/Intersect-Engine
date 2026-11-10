@@ -291,7 +291,7 @@ public class MonsterBattleTests
         var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
         Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
         Assert.That(hail.VersionData, Is.EqualTo(expected));
-        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v2"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v3"));
     }
 
 }

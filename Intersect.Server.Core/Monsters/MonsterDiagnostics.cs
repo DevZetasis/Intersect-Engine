@@ -17,6 +17,8 @@ public static class MonsterDiagnostics
             monster.NatureId == null ? "Nature: neutral/unassigned" : $"Nature: {nature?.Name ?? "Missing definition"} ({monster.NatureId})",
             "Order: HP / Attack / Defense / Special Attack / Special Defense / Speed",
             "Move slots: " + (monster.MovesInitialized ? string.Join(" / ", monster.MoveIds.Select(id => id?.ToString() ?? "Empty")) : "Pending one-time learnset initialization"),
+            monster.ConditionInitialized ? $"Current HP: {monster.CurrentHP}; Maximum HP: {monster.MaximumHPAtLastUpdate}; Fainted: {monster.CurrentHP == 0}" : "HP/PP pending one-time definition initialization",
+            "Move PP: " + string.Join(" / ", monster.MovePP.Select((p, slot) => $"{slot + 1}: {p.MoveId?.ToString() ?? "Empty"} ({(p.MoveId is { } id ? MonsterMoveDescriptor.Get(id)?.Name ?? "Missing move" : "Empty")}) {p.Current}/{p.Maximum}")),
             "IVs: " + string.Join(" / ", monster.IVs.ToArray()),
             "EVs: " + string.Join(" / ", monster.EVs.ToArray()),
         };

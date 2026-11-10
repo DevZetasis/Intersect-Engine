@@ -18,24 +18,39 @@ public sealed class MonsterBattleSession
     private MonsterBattlePresentationEvent[] _events = [];
     private Guid _previousRevision;
     private readonly string _background;
+    private readonly Action<MonsterBattleCombatant>? _persist;
+    public Guid OwnedMonsterId => Player.Id;
     public Guid Id { get; } = Guid.NewGuid();
     public Guid OwnerId => _playerSide.ControllerId!.Value;
     public int Turn { get; private set; } = 1;
     public Guid Revision { get; private set; } = Guid.NewGuid();
     public MonsterBattleOutcome Outcome { get; private set; }
     public MonsterBattleSession(MonsterBattleSide player, MonsterBattleSide opponent, MonsterBattleRules rules,
-        IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "")
+        IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "", Action<MonsterBattleCombatant>? persist = null)
     {
-        _background = background;
+        _background = background; _persist = persist;
         rules.Validate();
         if (player.ControllerId is not { } owner || owner == Guid.Empty || opponent.ControllerId != null ||
-            player.Active.Count != 1 || opponent.Active.Count != 1 || player.Active[0].Id == opponent.Active[0].Id ||
+            player.Active.Count != 1 || opponent.Active.Count != 1 || player.Active[0].HP <= 0 || opponent.Active[0].HP <= 0 || player.Active[0].Id == opponent.Active[0].Id ||
             player.Active[0].LegalSlots().Length == 0 || opponent.Active[0].LegalSlots().Length == 0 ||
             player.Active[0].Calculation.Level > rules.MaxLevel || opponent.Active[0].Calculation.Level > rules.MaxLevel)
             throw new InvalidOperationException("Practice requires an owned monster and opponent with usable damaging moves, one active monster per side.");
         _playerSide = new(player.ControllerId, player.Active.Select(actor => actor.Copy()).ToArray());
         _opponentSide = new(null, opponent.Active.Select(actor => actor.Copy()).ToArray());
         _rules = rules with { }; _random = random; _opponentProvider = provider ?? new RandomPracticeDecisionProvider();
+    }
+    internal void PersistResolvedTurn() => _persist?.Invoke(Player);
+    internal Action CaptureCheckpoint()
+    {
+        lock (_gate)
+        {
+            var hp = Player.HP; var opponentHP = Opponent.HP;
+            var pp = Player.Moves.Select(m => m?.PP ?? 0).ToArray(); var opponentPP = Opponent.Moves.Select(m => m?.PP ?? 0).ToArray();
+            var turn = Turn; var revision = Revision; var previous = _previousRevision; var outcome = Outcome;
+            var messages = _messages; var events = _events;
+            return () => { lock (_gate) { Player.RestoreResources(hp, pp); Opponent.RestoreResources(opponentHP, opponentPP);
+                Turn = turn; Revision = revision; _previousRevision = previous; Outcome = outcome; _messages = messages; _events = events; } };
+        }
     }
     public void Submit(Guid owner, Guid battle, int turn, Guid revision, int slot, bool forfeit)
     {

@@ -24,6 +24,11 @@ namespace Intersect.Server.Migrations.MySql.Player
 
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.MonsterInstance", b =>
                 {
+                    b.Property<long>("CurrentHP").ValueGeneratedOnAdd().HasColumnType("bigint").HasDefaultValue(0L);
+                    b.Property<long>("MaximumHPAtLastUpdate").ValueGeneratedOnAdd().HasColumnType("bigint").HasDefaultValue(0L);
+                    b.Property<bool>("ConditionInitialized").ValueGeneratedOnAdd().HasColumnType("tinyint(1)").HasDefaultValue(false);
+                    b.Property<string>("MovePPJson").HasColumnType("longtext").HasColumnName("MovePP");
+
                     b.Property<long>("CreatedAtUtcMilliseconds")
                         .HasColumnType("bigint");
 

@@ -19,6 +19,11 @@ namespace Intersect.Server.Migrations.Sqlite.Player
 
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.MonsterInstance", b =>
                 {
+                    b.Property<long>("CurrentHP").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(0L);
+                    b.Property<long>("MaximumHPAtLastUpdate").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(0L);
+                    b.Property<bool>("ConditionInitialized").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(false);
+                    b.Property<string>("MovePPJson").HasColumnType("TEXT").HasColumnName("MovePP");
+
                     b.Property<long>("CreatedAtUtcMilliseconds")
                         .HasColumnType("INTEGER");
 

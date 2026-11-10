@@ -60,7 +60,9 @@ public class MonsterRosterLayoutTests
             };
             var first = player.MonsterRoster.Monsters[0];
             first.Details = new OwnedMonsterDetails { NatureId = Guid.NewGuid(), NatureName = "Patient custom nature",
-                IVs = [1, 2, 3, 4, 5, 6], EVs = [0, 4, 8, 12, 16, 20], CalculatedStats = [100, 101, 102, 103, 104, 105] };
+                IVs = [1, 2, 3, 4, 5, 6], EVs = [0, 4, 8, 12, 16, 20], CalculatedStats = [100, 101, 102, 103, 104, 105],
+                ConditionInitialized = true, CurrentHP = 25, MaximumHP = 100,
+                Moves = [new() { Slot = 0, MoveId = Guid.NewGuid(), Name = "Persistent Move", CurrentPP = 3, MaximumPP = 20 }] };
             player.MonsterRoster.Monsters = new[] { first }.Concat(Enumerable.Range(0, 19).Select(slot => new OwnedMonsterSummary
             {
                 Id = Guid.NewGuid(), SpeciesId = species.Id, Level = 1, Location = MonsterLocation.Storage, Slot = slot,
@@ -114,6 +116,9 @@ public class MonsterRosterLayoutTests
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").Text, Is.EqualTo("Store in storage"));
             Label Named(string name) => Descendants(window).OfType<Label>().Single(label => label.Name == name);
             Assert.That(Named("SelectedNature").Text, Does.Contain("Patient custom nature"));
+            Assert.That(Named("SelectedCondition").Text, Does.Contain("25 / 100"));
+            Assert.That(Named("SelectedMovePP").Text, Does.Contain("3/20"));
+            Assert.That(Descendants(window).OfType<ProgressBar>().Single(b => b.Name == "SelectedHPBar").Value, Is.EqualTo(.25f));
             Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("100"));
             Assert.That(Named("Stat5Cell2").Text, Is.EqualTo("6"));
             Assert.That(Named("Stat5Cell3").Text, Is.EqualTo("20"));
@@ -132,9 +137,11 @@ public class MonsterRosterLayoutTests
             // A fresh server snapshot retains selection and updates its action label.
             var entry = player.MonsterRoster.Monsters[0];
             entry.Location = MonsterLocation.Storage;
+            entry.Details.CurrentHP = 0;
             player.MonsterRoster = new OwnedMonstersPacket { PlayerId = player.Id, Monsters = [entry] };
             window.Update();
             Assert.That(list.SelectedRow?.UserData, Is.SameAs(entry));
+            Assert.That(Named("SelectedCondition").Text, Does.Contain("Fainted"));
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").Text, Is.EqualTo("Add to party"));
             player.MonsterRoster = new OwnedMonstersPacket { PlayerId = player.Id, Monsters = [] };
             window.Update();

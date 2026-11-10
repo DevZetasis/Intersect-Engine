@@ -28,6 +28,8 @@ public sealed class MonsterRosterWindow : Window
     private readonly Label _identity;
     private readonly Label _nature;
     private readonly Label _totalEvs;
+    private readonly Label _condition, _movePP;
+    private readonly ProgressBar _conditionHP;
     private readonly Label _calculationStatus;
     private readonly List<Label[]> _statRows = [];
     private readonly List<Label> _detailLabels = [];
@@ -91,6 +93,9 @@ public sealed class MonsterRosterWindow : Window
 
         _identity = DetailLabel("SelectedIdentity", 48);
         _nature = DetailLabel("SelectedNature", 28);
+        _condition = DetailLabel("SelectedCondition", 28);
+        _conditionHP = new ProgressBar(_detailsContent) { Name = "SelectedHPBar", Dock = Pos.Top, Height = 18, Font = _font, FontSize = 14, AutoLabel = false };
+        _movePP = DetailLabel("SelectedMovePP", 100);
         _calculationStatus = DetailLabel("CalculationStatus", 0);
         AddStatRow("StatHeader", [Strings.Monsters.Stat, Strings.Monsters.Calculated, Strings.Monsters.IV, Strings.Monsters.EV]);
         var statNames = new string[] { Strings.Monsters.MaxHP, Strings.Monsters.Attack, Strings.Monsters.Defense,
@@ -190,7 +195,7 @@ public sealed class MonsterRosterWindow : Window
             label.IsHidden = string.IsNullOrEmpty(label.Text);
             label.Height = label.IsHidden ? 0 : Math.Max(label.MinimumSize.Y, label.TextHeight + 8);
         }
-        _detailsContent.Height = 108 + _detailLabels.Sum(label => label.Height) + 36 * _statRows.Count;
+        _detailsContent.Height = 126 + _detailLabels.Sum(label => label.Height) + 36 * _statRows.Count;
         base.Layout(skin);
         // ListBox's content-sized table can otherwise collapse while its scroll panel is laid out.
         var tableWidth = Math.Max(230, _list.Width - 24);
@@ -265,6 +270,7 @@ public sealed class MonsterRosterWindow : Window
         _species.Text = string.Empty;
         _identity.Text = string.Empty;
         _nature.Text = string.Empty;
+        _condition.Text = _movePP.Text = string.Empty; _conditionHP.Value = 0; _conditionHP.Text = string.Empty; _conditionHP.IsHidden = true;
         _totalEvs.Text = string.Empty;
         _calculationStatus.Text = Strings.Monsters.SelectMonster;
         foreach (var cells in _statRows.Skip(1))
@@ -280,6 +286,14 @@ public sealed class MonsterRosterWindow : Window
         _identity.Text = Strings.Monsters.Identity.ToString(monster.Level, monster.Experience,
             monster.Location == MonsterLocation.Party ? Strings.Monsters.Party : Strings.Monsters.Storage, monster.Slot + 1);
         var data = monster.Details;
+        if (data?.ConditionInitialized == true)
+        {
+            _condition.Text = $"HP {data.CurrentHP} / {data.MaximumHP}" + (data.CurrentHP == 0 ? " - Fainted" : "");
+            _conditionHP.Value = data.MaximumHP > 0 ? (float)Math.Clamp(data.CurrentHP / (double)data.MaximumHP, 0, 1) : 0;
+            _conditionHP.IsHidden = false;
+            _movePP.Text = string.Join("\n", data.Moves.Select(m => m.MoveId == null ? $"{m.Slot + 1}. Empty slot" : $"{m.Slot + 1}. {m.Name}: PP {m.CurrentPP}/{m.MaximumPP}"));
+        }
+        else _condition.Text = "HP/PP unavailable";
         var natureName = data?.NatureId == null ? Strings.Monsters.Neutral.ToString()
             : string.IsNullOrWhiteSpace(data.NatureName) ? Strings.Monsters.MissingNature.ToString() : data.NatureName;
         _nature.Text = data == null ? string.Empty : Strings.Monsters.Nature.ToString(natureName);

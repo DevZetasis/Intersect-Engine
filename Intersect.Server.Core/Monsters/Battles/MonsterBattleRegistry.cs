@@ -6,10 +6,11 @@ namespace Intersect.Server.Monsters.Battles;
 /// <summary>Serializes practice lifecycle/turns. Publication targets only the owning character.</summary>
 public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket> publish, Action<Exception>? reportFailure = null)
 {
-    public object SyncRoot { get; } = new();
+    public object SyncRoot => Intersect.Server.Monsters.MonsterTypeRules.ContentGate;
     private readonly Dictionary<Guid, MonsterBattleSession> _active = new();
     private long _sequence;
     public bool HasActive(Guid owner) { lock (SyncRoot) return _active.ContainsKey(owner); }
+    public bool ReservesMonster(Guid monster) { lock (SyncRoot) return _active.Values.Any(s => s.OwnedMonsterId == monster); }
     public Guid Start(Guid owner, Func<MonsterBattleSession> create)
     {
         lock (SyncRoot)
@@ -35,10 +36,16 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
                 Send(session, exception.Message);
                 throw;
             }
-            try { session.Submit(owner, action.BattleId, action.Turn, action.Revision, action.MoveSlot, action.Forfeit); }
+            var rollback = session.CaptureCheckpoint();
+            try
+            {
+                session.Submit(owner, action.BattleId, action.Turn, action.Revision, action.MoveSlot, action.Forfeit);
+                if (!action.Forfeit) session.PersistResolvedTurn(); // Commit all HP/PP before any success publication.
+            }
             catch
             {
-                session.Cancel("Practice battle cancelled because turn resolution failed.");
+                rollback();
+                session.Cancel("Battle cancelled: turn resolution/persistence could not be confirmed. Last confirmed battle state shown; refresh your roster.");
                 _active.Remove(owner);
                 Send(session);
                 throw;

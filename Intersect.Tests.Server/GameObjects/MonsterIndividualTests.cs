@@ -242,7 +242,7 @@ public class MonsterIndividualTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_attrs", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterMoveSlots().TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddMonsterCondition().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -320,13 +320,13 @@ public class MonsterIndividualTests
             Assert.That(owned.MoveIds, Is.EqualTo(moveIds.Take(4).Cast<Guid?>().ToArray()));
             // Simulate a future authorized saved choice, including deliberately empty slots.
             db.MonsterMoveExists = moveIds.Contains;
-            db.Entry(owned).Property("Move1Id").CurrentValue = moveIds[4];
-            for (var i = 2; i <= 4; i++) db.Entry(owned).Property("Move" + i + "Id").CurrentValue = null;
-            db.SaveChanges();
+
         }
+        var assignment = WithMoves(); assignment.ReplaceMove(_owner, grant.Id, 0, moveIds[4]);
+        for (var slot = 1; slot < 4; slot++) assignment.ReplaceMove(_owner, grant.Id, slot, null);
         species.Learnset.Clear();
-        var service = WithMoves(); service.GetOwned(_owner);
-        service.Move(_owner, grant.Id, grant.Revision, MonsterLocation.Storage);
+        var service = WithMoves(); var currentRevision = service.GetOwned(_owner).Single().Revision;
+        service.Move(_owner, grant.Id, currentRevision, MonsterLocation.Storage);
         using (var db = Context())
         {
             var owned = db.OwnedMonsters.Single();

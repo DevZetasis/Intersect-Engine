@@ -2372,6 +2372,7 @@ Tick timer saved in server config.json.";
             {"questcontrol", @"Quest Control"},
             {"releaseplayer", @"Release Player"},
             {"restorehp", @"Restore HP"},
+            {"healplayermonsters", @"Heal Player Monsters"},
             {"restoremp", @"Restore MP"},
             {"setaccess", @"Set Access"},
             {"setmoveroute", @"Set Move Route"},

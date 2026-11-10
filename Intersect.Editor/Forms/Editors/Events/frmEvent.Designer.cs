@@ -66,7 +66,8 @@ namespace Intersect.Editor.Forms.Editors.Events
             var changePlayerNameTreeNode = new TreeNode("Change Player Name");
             var resetStatPointTreeNode = new TreeNode("Reset Stat Point Allocations");
             var castSpellOnTreeNode = new TreeNode("Cast Spell On");
-            var playerControlTreeNode = new TreeNode("Player Control", new TreeNode[] { restoreHPTreeNode, restoreMPTreeNode, levelUpTreeNode, giveExperienceTreeNode, changeLevelTreeNode, changeSpellsTreeNode, changeItemsTreeNode, changeSpriteTreeNode, changePlayerColorTreeNode, changeFaceTreeNode, changeGenderTreeNode, setAccessTreeNode, changeClassTreeNode, equipUneqiupTreeNode, changeNameColorTreeNode, changePlayerLabelTreeNode, changePlayerNameTreeNode, resetStatPointTreeNode, castSpellOnTreeNode });
+            var healPlayerMonstersTreeNode = new TreeNode("Heal Player Monsters") { Name = "healplayermonsters", Tag = (int)EventCommandType.HealPlayerMonsters };
+            var playerControlTreeNode = new TreeNode("Player Control", new TreeNode[] { healPlayerMonstersTreeNode, restoreHPTreeNode, restoreMPTreeNode, levelUpTreeNode, giveExperienceTreeNode, changeLevelTreeNode, changeSpellsTreeNode, changeItemsTreeNode, changeSpriteTreeNode, changePlayerColorTreeNode, changeFaceTreeNode, changeGenderTreeNode, setAccessTreeNode, changeClassTreeNode, equipUneqiupTreeNode, changeNameColorTreeNode, changePlayerLabelTreeNode, changePlayerNameTreeNode, resetStatPointTreeNode, castSpellOnTreeNode });
             var warpPlayerTreeNode = new TreeNode("Warp Player");
             var setMoveRouteTreeNode = new TreeNode("Set Move Route");
             var waitForRouteCompleteTreeNode = new TreeNode("Wait for Route Completion");

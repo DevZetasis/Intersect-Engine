@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Intersect.Server.Monsters;
 
-public sealed class MonsterOwnershipService
+public sealed partial class MonsterOwnershipService
 {
     // Serialize each character's allocations without an ever-growing lock dictionary.
     private static readonly object[] Gates = Enumerable.Range(0, 64).Select(_ => new object()).ToArray();
@@ -26,12 +26,14 @@ public sealed class MonsterOwnershipService
     public MonsterOwnershipService(Func<PlayerContext> createContext, Func<Guid, bool> speciesExists, int partyCapacity,
         IMonsterRandom? random = null, Func<IEnumerable<MonsterNatureDescriptor>>? natures = null,
         MonsterBattleRules? rules = null, ILogger? logger = null,
-        Func<Guid, MonsterSpeciesDescriptor?>? species = null, Func<Guid, bool>? moveExists = null)
+        Func<Guid, MonsterSpeciesDescriptor?>? species = null, Func<Guid, bool>? moveExists = null, Func<Guid, MonsterMoveDescriptor?>? move = null, Func<Guid, bool>? reserved = null)
     {
         _createContext = createContext;
         _speciesExists = speciesExists;
         PartyCapacity = Math.Clamp(partyCapacity, 1, 64);
         _species = species ?? MonsterSpeciesDescriptor.Get;
+        _move = move ?? MonsterMoveDescriptor.Get;
+        _reserved = reserved ?? Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.ReservesMonster;
         _moveExists = moveExists ?? (id => MonsterMoveDescriptor.Get(id) != null);
         _random = random ?? new SystemMonsterRandom();
         _natures = natures ?? (() => Array.Empty<MonsterNatureDescriptor>());
@@ -59,10 +61,11 @@ public sealed class MonsterOwnershipService
             var needsMoves = owned.Where(monster => !monster.MovesInitialized).ToArray();
             foreach (var monster in needsMoves)
                 monster.InitializeMoves(MonsterMoveAssignment.Initial(_species(monster.SpeciesId), monster.Level, _moveExists));
-            var overflow = owned.Where(monster => monster.Location == MonsterLocation.Party && monster.Slot >= PartyCapacity).ToArray();
+            var conditionsChanged = owned.Where(monster => !_reserved(monster.Id)).Count(ReconcileCondition);
+            var overflow = owned.Where(monster => monster.Location == MonsterLocation.Party && monster.Slot >= PartyCapacity && !_reserved(monster.Id)).ToArray();
             foreach (var monster in overflow)
                 monster.Place(MonsterLocation.Storage, FindSlot(owned, MonsterLocation.Storage, int.MaxValue));
-            if ((overflow.Length > 0 || needsMoves.Length > 0) && db.SaveChanges() <= 0)
+            if ((overflow.Length > 0 || needsMoves.Length > 0 || conditionsChanged > 0) && db.SaveChanges() <= 0)
                 throw new InvalidOperationException("Monster placement was not committed.");
             return owned.OrderBy(monster => monster.Location).ThenBy(monster => monster.Slot)
                 .Select(monster =>
@@ -111,6 +114,7 @@ public sealed class MonsterOwnershipService
             var natureId = MonsterAttributeGeneration.SelectNature(_natures(), _random);
             var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot, ivs, natureId);
             monster.InitializeMoves(MonsterMoveAssignment.Initial(_species(speciesId), monster.Level, _moveExists));
+            ReconcileCondition(monster);
             db.OwnedMonsters.Add(monster);
             try
             {
@@ -142,12 +146,14 @@ public sealed class MonsterOwnershipService
     {
         if (destination is not (MonsterLocation.Party or MonsterLocation.Storage))
             throw new InvalidOperationException("Invalid monster location.");
+        lock (MonsterTypeRules.ContentGate)
         lock (Gate(ownerId))
         {
             using var db = _createContext();
             // Never fetch by monster UUID alone on a character-originated operation.
             var monster = db.OwnedMonsters.SingleOrDefault(item => item.OwnerPlayerId == ownerId && item.Id == monsterId)
                 ?? throw new InvalidOperationException("Monster is not in your collection.");
+            EnsureUnreserved(monster.Id);
             if (monster.Revision != expectedRevision) throw new InvalidOperationException("The collection changed. Please try again.");
             if (monster.Location == destination) return;
             var owned = db.OwnedMonsters.AsNoTracking().Where(item => item.OwnerPlayerId == ownerId).ToArray();
@@ -162,14 +168,17 @@ public sealed class MonsterOwnershipService
     internal void SetEVs(Guid ownerId, Guid monsterId, Guid expectedRevision, MonsterStatValues evs)
     {
         MonsterStatCalculator.ValidateEVs(evs, _rules);
+        lock (MonsterTypeRules.ContentGate)
         lock (Gate(ownerId))
         {
             using var db = _createContext();
             var monster = db.OwnedMonsters.SingleOrDefault(item => item.OwnerPlayerId == ownerId && item.Id == monsterId)
                 ?? throw new InvalidOperationException("Monster is not in your collection.");
+            EnsureUnreserved(monster.Id);
             if (monster.Revision != expectedRevision) throw new InvalidOperationException("The collection changed. Please try again.");
             if (monster.EVs == evs) return;
             monster.SetEVs(evs, _rules);
+            ReconcileCondition(monster);
             if (db.SaveChanges() <= 0) throw new InvalidOperationException("Monster EV changes were not committed.");
         }
     }

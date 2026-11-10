@@ -26,6 +26,7 @@ public abstract partial class PlayerContext
         ChangeTracker.DetectChanges();
         foreach (var entry in ChangeTracker.Entries<MonsterInstance>().Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
+            entry.Entity.ValidateCondition();
             MonsterStatCalculator.ValidateIVs(entry.Entity.IVs);
             if (MonsterMoveExists != null && (entry.State == EntityState.Added || entry.Properties.Any(property =>
                     property.Metadata.Name.StartsWith("Move", StringComparison.Ordinal) && !Equals(property.OriginalValue, property.CurrentValue))) &&

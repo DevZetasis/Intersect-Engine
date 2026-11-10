@@ -1,5 +1,7 @@
 # First practice monster battles (Milestone 6C)
 
+Milestone 6E supersedes the temporary owned HP/PP policy described here. See [persistent monster condition](monster-condition.md) for persistence, healing and matching-build instructions.
+
 > Milestone 6D now provides the battle scene, front/back artwork, menus and ordered event playback. See [the presentation report](monster-battle-presentation.md) for current builds, compatibility, tests and live-test instructions. The Milestone 6C mechanics described below remain in place.
 
 ## Architectural decisions

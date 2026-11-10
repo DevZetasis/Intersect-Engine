@@ -563,6 +563,9 @@ public partial class FrmEvent : Form
                 tmpCommand = new StartCommmonEventCommand();
 
                 break;
+            case EventCommandType.HealPlayerMonsters:
+                tmpCommand = new HealPlayerMonstersCommand();
+                break;
             case EventCommandType.RestoreHp:
                 tmpCommand = new RestoreHpCommand();
 
@@ -1221,6 +1224,9 @@ public partial class FrmEvent : Form
             case EventCommandType.StartCommonEvent:
                 cmdWindow = new EventCommandStartCommonEvent((StartCommmonEventCommand)command, this);
 
+                break;
+            case EventCommandType.HealPlayerMonsters:
+                cmdWindow = new EventCommandHealPlayerMonsters((HealPlayerMonstersCommand)command, this);
                 break;
             case EventCommandType.RestoreHp:
                 cmdWindow = new EventCommandChangeVital((RestoreHpCommand)command, this);

@@ -82,6 +82,10 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
         monsters.HasIndex(monster => monster.Move2Id);
         monsters.HasIndex(monster => monster.Move3Id);
         monsters.HasIndex(monster => monster.Move4Id);
+        monsters.Property(monster => monster.CurrentHP).HasDefaultValue(0L);
+        monsters.Property(monster => monster.MaximumHPAtLastUpdate).HasDefaultValue(0L);
+        monsters.Property(monster => monster.ConditionInitialized).HasDefaultValue(false);
+        monsters.Property(monster => monster.MovePPJson).IsRequired(false);
         monsters.Property(monster => monster.MovesInitialized).HasDefaultValue(false);
         monsters.Property(monster => monster.IvHP).HasDefaultValue(0);
         monsters.Property(monster => monster.IvAttack).HasDefaultValue(0);
