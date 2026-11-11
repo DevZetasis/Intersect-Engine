@@ -428,6 +428,11 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.Property<Guid?>("AnimationId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("AnimationPosition")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<int>("Category")
                         .HasColumnType("INTEGER");
 

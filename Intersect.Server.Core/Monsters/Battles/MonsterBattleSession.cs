@@ -180,7 +180,7 @@ public sealed class MonsterBattleSession
         void Emit(MonsterBattleEventKind kind, string text, long before = 0, long after = 0) => events.Add(new()
         {
             Kind = kind, Order = events.Count, ActorId = attacker.Id, TargetId = defender.Id,
-            MoveId = move.Definition.Id, AnimationId = move.Definition.AnimationId, HPBefore = before, HPAfter = after, Text = text,
+            MoveId = move.Definition.Id, AnimationId = move.Definition.AnimationId, AnimationPosition = move.Definition.AnimationPosition, HPBefore = before, HPAfter = after, Text = text,
         });
         messages.Add($"{attacker.Name} used {move.Definition.Name}!");
         Emit(MonsterBattleEventKind.MoveUsed, messages[^1]);

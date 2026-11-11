@@ -191,6 +191,7 @@ public class MonsterMoveTests
             physical.BasePower = 45;
             physical.Accuracy = 95;
             physical.Priority = 1;
+            physical.AnimationPosition = BattleMoveAnimationPosition.Both;
             var status = Move(typeId);
             status.Category = MonsterMoveCategory.Status;
             status.BasePower = 0;
@@ -222,6 +223,7 @@ public class MonsterMoveTests
             using (var db = new SqliteGameContext(options))
             {
                 var loaded = db.MonsterMoves.Single(move => move.Id == physical.Id);
+                Assert.That(loaded.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Both));
                 Assert.That((loaded.BasePower, loaded.Accuracy, loaded.Priority), Is.EqualTo((45, 95, 1)));
                 Assert.That(db.MonsterMoves.Single(move => move.Id == status.Id).BasePower, Is.Zero);
                 Assert.That(db.MonsterSpecies.Single(species => species.Id == legacyId).Learnset.Count(entry => entry.Level == 1), Is.EqualTo(2));
@@ -239,6 +241,32 @@ public class MonsterMoveTests
                 Assert.That(db.MonsterTypes.Single().DisplayColor, Is.EqualTo("#123456"));
                 Assert.That(db.MonsterSpecies.Single(species => species.Id == legacyId).Learnset.Count, Is.EqualTo(3));
             }
+        });
+    }
+
+    [Test]
+    public void LegacyAnimationPositionDefaultsToTargetInJsonAndAfterSqliteUpgrade()
+    {
+        var move = Move(Guid.NewGuid());
+        move.AnimationPosition = BattleMoveAnimationPosition.Both;
+        var oldJson = Newtonsoft.Json.Linq.JObject.Parse(move.JsonData);
+        oldJson.Remove(nameof(MonsterMoveDescriptor.AnimationPosition));
+        move.Load(oldJson.ToString());
+        Assert.That(move.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Target));
+        move.AnimationPosition = (BattleMoveAnimationPosition)99;
+        Assert.That(move.IsValid, Is.False);
+
+        WithDatabase(options =>
+        {
+            var animationId = Guid.NewGuid();
+            using var db = new SqliteGameContext(options);
+            db.GetService<IMigrator>().Migrate("20261109000200_AddMonsterBattleAppearance");
+            db.Database.ExecuteSqlInterpolated($"INSERT INTO MonsterMoves (Id, Name, TimeCreated, Description, Folder, TypeId, Category, BasePower, Accuracy, AlwaysHits, Priority, Target, MaximumPP, AnimationId) VALUES ({move.Id}, {"Legacy move"}, {1L}, {string.Empty}, {string.Empty}, {move.TypeId}, {0}, {1}, {100}, {false}, {0}, {0}, {20}, {animationId})");
+            db.Database.Migrate();
+            Assert.That(db.Database.HasPendingModelChanges(), Is.False);
+            var loaded = db.MonsterMoves.Single();
+            Assert.That(loaded.AnimationId, Is.EqualTo(animationId));
+            Assert.That(loaded.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Target));
         });
     }
 
@@ -309,13 +337,17 @@ public class MonsterMoveTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_moves", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoves();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterBattleAppearance().TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveAnimationPosition().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(sql, Does.Contain("CREATE TABLE `MonsterMoves`"));
         Assert.That(sql, Does.Contain("ADD `Learnset` longtext"));
         Assert.That(sql, Does.Not.Contain("DROP TABLE"));
+        var positionMigration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveAnimationPosition();
+        var positionSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(positionMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(positionSql, Does.Contain("ADD `AnimationPosition` int NOT NULL DEFAULT 0"));
     }
     private sealed class OfflineMySql(DatabaseContextOptions options) : GameContext(options)
     {

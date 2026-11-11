@@ -24,7 +24,8 @@ public sealed class MonsterBattleWindow : Window
     private readonly ScrollControl _partyScroll;
     private readonly Button _partyBack;
     private readonly MonsterBattleScene _scene;
-    private readonly ImagePanel _background, _playerSprite, _opponentSprite, _lowerEffect, _upperEffect;
+    private readonly ImagePanel _background, _playerSprite, _opponentSprite;
+    private readonly MonsterBattleAnimation _animation;
     private readonly ProgressBar _playerHP, _opponentHP, _xp;
     private readonly Button[] _moves = new Button[4];
     private readonly Button _fight, _bag, _monsters, _run, _back, _forfeit, _close, _advance, _skip;
@@ -78,19 +79,31 @@ public sealed class MonsterBattleWindow : Window
         _status = Text(this, "BattleStatus", 64); _status.Dock = Pos.Bottom;
         _scene = new MonsterBattleScene(this) { Dock = Pos.Fill };
         _background = new ImagePanel(_scene, "BattleBackground") { MouseInputEnabled = false };
+        var lowerEffects = MonsterBattleAnimation.CreatePanels(_scene, "BattleLowerEffect");
         _playerSprite = new ImagePanel(_scene, "PlayerSprite") { MouseInputEnabled = false };
         _opponentSprite = new ImagePanel(_scene, "OpponentSprite") { MouseInputEnabled = false };
         _playerMissing = Text(_scene, "PlayerPlaceholder", 44); _playerMissing.Text = Strings.MonsterBattle.NoArt;
         _opponentMissing = Text(_scene, "OpponentPlaceholder", 44); _opponentMissing.Text = Strings.MonsterBattle.NoArt;
         _playerMissing.SetTextColor(new Color(255, 37, 48, 61), ComponentState.Normal);
         _opponentMissing.SetTextColor(new Color(255, 37, 48, 61), ComponentState.Normal);
+        var upperEffects = MonsterBattleAnimation.CreatePanels(_scene, "BattleUpperEffect");
+        _animation = new(lowerEffects, upperEffects, AnimationDescriptor.Get,
+            name => Globals.ContentManager?.GetTexture(TextureType.Animation, name),
+            name => Audio.AddGameSound(name, loop: false));
         (_playerInfo, _playerName, _playerHP, _playerHPValue) = Info("Player");
         (_opponentInfo, _opponentName, _opponentHP, _opponentHPValue) = Info("Opponent");
         _xp = new ProgressBar(_playerInfo) { Name = "BattleExperience", AutoLabel = false, Height = 6, Dock = Pos.Top, IsDisabled = true, Value = 0 };
         _experience = Text(_playerInfo, "BattleExperienceLabel", 20); _experience.Dock = Pos.Top; _experience.Text = Strings.MonsterBattle.Experience;
-        _lowerEffect = new ImagePanel(_scene, "BattleLowerEffect") { MouseInputEnabled = false };
-        _upperEffect = new ImagePanel(_scene, "BattleUpperEffect") { MouseInputEnabled = false };
-        _playback.EffectDuration = EventDuration;
+        _playback.EffectDuration = entry => entry.Kind switch
+        {
+            MonsterBattleEventKind.MoveUsed => _animation.Duration,
+            MonsterBattleEventKind.DamageApplied => .5,
+            MonsterBattleEventKind.MonsterFainted => .55,
+            _ => .45,
+        };
+        _playback.EventStarted = _animation.Begin;
+        _playback.EventEnded = _animation.End;
+        _playback.Interrupted = _animation.Cancel;
         Interface.InputBlockingComponents.Add(this);
     }
     private bool CanCommand => _playback.Phase == MonsterBattlePresentationPhase.CommandSelection;
@@ -114,6 +127,7 @@ public sealed class MonsterBattleWindow : Window
         base.OnJsonReloaded();
         // JSON controls geometry/style, never battle legality, phase, HP or rendered artwork.
         _partySnapshot = null;
+        _animation.ResetPanels();
         if (_playback.State is { } state) { LoadArt(state); RefreshControls(); }
     }
     protected override void Layout(Intersect.Client.Framework.Gwen.Skin.Base skin)
@@ -236,7 +250,7 @@ public sealed class MonsterBattleWindow : Window
 
     private void ClearArt()
     {
-        _playerSprite.Texture = _opponentSprite.Texture = _background.Texture = _lowerEffect.Texture = _upperEffect.Texture = null;
+        _playerSprite.Texture = _opponentSprite.Texture = _background.Texture = null;
         _playerArt = _opponentArt = null;
     }
     private static string Short(string text, int limit) => text.Length <= limit ? text : text[..Math.Max(1, limit - 3)] + "...";
@@ -299,7 +313,7 @@ public sealed class MonsterBattleWindow : Window
         {
             var bounds = MonsterBattleArt.SpriteBounds(_scene.Width, _scene.Height, player, art?.Frame.Width ?? 80, art?.Frame.Height ?? 80);
             var actor = player ? _playback.DisplayedPlayer ?? state.Player : state.Opponent; var e = _playback.CurrentEvent; var p = _playback.Progress;
-            var offset = e?.Kind == MonsterBattleEventKind.MoveUsed && e.ActorId == actor.Id ? Math.Sin(Math.PI * p) * 16 :
+            var offset = e?.Kind == MonsterBattleEventKind.MoveUsed && e.ActorId == actor.Id ? Math.Sin(Math.PI * Math.Clamp(_playback.Elapsed / .35, 0, 1)) * 16 :
                 e?.Kind == MonsterBattleEventKind.DamageApplied && e.TargetId == actor.Id && e.HPAfter < e.HPBefore ? -Math.Sin(Math.PI * p) * 7 : 0;
             var fainted = player ? _playback.PlayerFainted : _playback.OpponentFainted;
             var opacity = fainted ? 0 : e?.Kind == MonsterBattleEventKind.MonsterFainted && e.TargetId == actor.Id ? 1 - p : 1;
@@ -307,40 +321,17 @@ public sealed class MonsterBattleWindow : Window
             if (player && e?.Kind == MonsterBattleEventKind.SendOut) opacity = p;
             bounds.X += (int)(offset * (player ? 1 : -1)); bounds.Y += (int)(offset * (player ? -.35 : .35));
             panel.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-            var hit = e?.Kind == MonsterBattleEventKind.DamageApplied && e.TargetId == actor.Id && e.HPAfter < e.HPBefore && (int)(p * 8) % 2 == 0;
+            var hit = e?.Kind == MonsterBattleEventKind.DamageApplied && e.TargetId == actor.Id && e.HPAfter < e.HPBefore && !_animation.HasAuthoredImpact(e) && (int)(p * 8) % 2 == 0;
             panel.RenderColor = new Color((int)(255 * opacity), 255, hit ? 120 : 255, hit ? 120 : 255);
             panel.IsHidden = art?.Texture == null || opacity <= 0;
             missing.SetBounds(bounds.X, bounds.Y + bounds.Height / 2, Math.Max(100, bounds.Width), 44);
             missing.IsHidden = art?.Texture != null || opacity <= 0;
         }
         Pose(_playerSprite, _playerMissing, _playerArt, true); Pose(_opponentSprite, _opponentMissing, _opponentArt, false);
-        DrawEffect(_lowerEffect, false); DrawEffect(_upperEffect, true);
+        _animation.Draw(_playback.Elapsed, _playback.DisplayedPlayer?.Id ?? state.Player.Id, _playerSprite,
+            state.Opponent.Id, _opponentSprite);
     }
-    private double EventDuration(MonsterBattlePresentationEvent e)
-    {
-        if (e.Kind != MonsterBattleEventKind.DamageApplied || e.HPAfter >= e.HPBefore) return e.Kind switch { MonsterBattleEventKind.MoveUsed => .35, MonsterBattleEventKind.MonsterFainted => .55, _ => .45 };
-        var animation = e.AnimationId is { } id ? AnimationDescriptor.Get(id) : null;
-        return animation == null ? .5 : Math.Clamp(Math.Max(LayerSeconds(animation.Lower), LayerSeconds(animation.Upper)), .5, 2);
-    }
-    private static double LayerSeconds(AnimationLayer layer) => Math.Max(1, layer.FrameCount) * (double)Math.Max(1, layer.FrameSpeed) / 1000d;
-    private void DrawEffect(ImagePanel image, bool upper)
-    {
-        image.IsHidden = true;
-        if (_playback.CurrentEvent is not { Kind: MonsterBattleEventKind.DamageApplied } e || e.HPAfter >= e.HPBefore || e.AnimationId is not { } id) return;
-        var layer = upper ? AnimationDescriptor.Get(id)?.Upper : AnimationDescriptor.Get(id)?.Lower;
-        if (layer == null || string.IsNullOrWhiteSpace(layer.Sprite)) return;
-        IGameTexture? texture;
-        try { texture = Globals.ContentManager.GetTexture(TextureType.Animation, layer.Sprite); } catch { return; }
-        if (texture == null || texture.IsMissingOrCorrupt) return;
-        var columns = Math.Max(1, layer.XFrames); var rows = Math.Max(1, layer.YFrames);
-        var frame = (int)(_playback.Elapsed * 1000 / Math.Max(1, layer.FrameSpeed));
-        if (frame >= Math.Max(1, layer.FrameCount) || frame >= (long)columns * rows) return;
-        var w = texture.Width / columns; var h = texture.Height / rows; if (w < 1 || h < 1) return;
-        image.Texture = texture; image.SetTextureRect(frame % columns * w, frame / columns * h, w, h);
-        var target = e.TargetId == _playback.DisplayedPlayer?.Id ? _playerSprite : _opponentSprite;
-        var scale = Math.Min(160d / w, 160d / h); var width = Math.Max(1, (int)(w * scale)); var height = Math.Max(1, (int)(h * scale));
-        image.SetBounds(target.X + target.Width / 2 - width / 2, target.Y + target.Height / 2 - height / 2, width, height); image.IsHidden = false;
-    }
+
     private void Submit(MonsterBattleActionKind kind, int slot = -1, Guid target = default)
     {
         if (_playback.State is not { Outcome: MonsterBattleOutcome.Active } state || (!CanCommand && !MustReplace)) return;
@@ -351,6 +342,18 @@ public sealed class MonsterBattleWindow : Window
         RefreshControls();
         _send(new() { BattleId = state.BattleId, Turn = state.Turn, Revision = state.Revision, MoveSlot = slot, Kind = kind, MonsterId = target });
     }
+    public override void Hide()
+    {
+        _animation?.Cancel();
+        base.Hide();
+    }
+
+    protected override void OnClose(Base sender, EventArgs args)
+    {
+        _animation.Cancel();
+        base.OnClose(sender, args);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) { Interface.InputBlockingComponents.Remove(this); _playback.Reset(); ClearArt(); }

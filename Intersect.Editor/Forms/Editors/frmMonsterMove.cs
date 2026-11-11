@@ -22,6 +22,7 @@ public sealed class FrmMonsterMove : EditorForm
     private readonly DarkComboBox _category = Choice();
     private readonly DarkComboBox _target = Choice();
     private readonly DarkComboBox _animation = Choice();
+    private readonly DarkComboBox _animationPosition = Choice();
     private readonly DarkNumericUpDown _power = new() { Minimum = 0, Maximum = int.MaxValue, Value = 1 };
     private readonly DarkNumericUpDown _pp = new() { Minimum = 1, Maximum = 999, Value = 20 };
     private readonly DarkNumericUpDown _accuracy = new() { Minimum = 1, Maximum = 100, Value = 100 };
@@ -68,6 +69,9 @@ public sealed class FrmMonsterMove : EditorForm
         AddField(Strings.MonsterMoveEditor.Priority, _priority);
         AddField(Strings.MonsterMoveEditor.Target, _target);
         AddField(Strings.MonsterMoveEditor.Animation, _animation);
+        AddField(Strings.MonsterMoveEditor.AnimationPosition, _animationPosition);
+        _animationPosition.Items.AddRange(new object[] { Strings.MonsterMoveEditor.AnimationTarget.ToString(),
+            Strings.MonsterMoveEditor.AnimationAttacker.ToString(), Strings.MonsterMoveEditor.AnimationBoth.ToString() });
         _category.Items.AddRange(new object[] { Strings.MonsterMoveEditor.Physical.ToString(), Strings.MonsterMoveEditor.Special.ToString(), Strings.MonsterMoveEditor.Status.ToString() });
         _target.Items.AddRange(new object[] { Strings.MonsterMoveEditor.OneOpponent.ToString(), Strings.MonsterMoveEditor.Self.ToString(),
             Strings.MonsterMoveEditor.OneAlly.ToString(), Strings.MonsterMoveEditor.AllOpponents.ToString(), Strings.MonsterMoveEditor.AllBattlefield.ToString() });
@@ -79,7 +83,7 @@ public sealed class FrmMonsterMove : EditorForm
         Controls.Add(buttons);
         _name.TextChanged += EditFields;
         _description.TextChanged += EditFields;
-        foreach (var choice in new[] { _type, _category, _target, _animation }) choice.SelectedIndexChanged += EditFields;
+        foreach (var choice in new[] { _type, _category, _target, _animation, _animationPosition }) choice.SelectedIndexChanged += EditFields;
         foreach (var number in new[] { _power, _accuracy, _priority, _pp }) number.ValueChanged += EditFields;
         _alwaysHits.CheckedChanged += EditFields;
         FormClosed += (_, _) => Globals.CurrentEditor = -1;
@@ -168,6 +172,7 @@ public sealed class FrmMonsterMove : EditorForm
             _description.Text = _selected.Description;
             PopulateChoice(_type, MonsterTypeDescriptor.Lookup.Values.Cast<MonsterTypeDescriptor>().Select(type => new ContentChoice(type.Id, type.Name)), _selected.TypeId);
             PopulateChoice(_animation, AnimationDescriptor.Lookup.Values.Cast<AnimationDescriptor>().Select(animation => new ContentChoice(animation.Id, animation.Name)), _selected.AnimationId ?? Guid.Empty);
+            _animationPosition.SelectedIndex = Enum.IsDefined(_selected.AnimationPosition) ? (int)_selected.AnimationPosition : 0;
             _category.SelectedIndex = (int)_selected.Category;
             _power.Minimum = _selected.Category == MonsterMoveCategory.Status ? 0 : 1;
             _power.Value = _selected.BasePower;
@@ -199,6 +204,7 @@ public sealed class FrmMonsterMove : EditorForm
         _selected.Target = (MonsterMoveTarget)_target.SelectedIndex;
         var animation = (_animation.SelectedItem as ContentChoice)?.Id ?? Guid.Empty;
         _selected.AnimationId = animation == Guid.Empty ? null : animation;
+        _selected.AnimationPosition = (BattleMoveAnimationPosition)_animationPosition.SelectedIndex;
         _moveList.UpdateText(_selected.Name);
     }
     private void NewMove(object? sender, EventArgs e) => PacketSender.SendCreateObject(GameObjectType.MonsterMove);

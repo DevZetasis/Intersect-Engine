@@ -62,8 +62,13 @@ public class MonsterMoveEditorTests
             Field<CheckBox>(editor, "_alwaysHits").Checked = true;
             Field<ComboBox>(editor, "_target").SelectedIndex = (int)MonsterMoveTarget.AllBattlefield;
             Select(Field<ComboBox>(editor, "_animation"), animation.Id);
+            Field<ComboBox>(editor, "_animationPosition").SelectedIndex = (int)BattleMoveAnimationPosition.Both;
             Assert.That(Field<NumericUpDown>(editor, "_accuracy").Enabled, Is.False);
             var draft = Field<MonsterMoveDescriptor>(editor, "_selected");
+            Assert.That(draft.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Both));
+            Select(Field<ComboBox>(editor, "_animation"), Guid.Empty);
+            Assert.That(draft.AnimationId, Is.Null);
+            Select(Field<ComboBox>(editor, "_animation"), animation.Id);
             Assert.That((draft.Category, draft.BasePower, draft.Accuracy, draft.AlwaysHits, draft.Priority, draft.Target, draft.AnimationId),
                 Is.EqualTo((MonsterMoveCategory.Special, 81, 92, true, -4, MonsterMoveTarget.AllBattlefield, (Guid?)animation.Id)));
             Assert.That(source.JsonData, Is.EqualTo(before));
@@ -72,6 +77,8 @@ public class MonsterMoveEditorTests
             Invoke(editor, "PasteMove", null, EventArgs.Empty);
             Assert.That(Field<MonsterMoveDescriptor>(editor, "_selected").Id, Is.EqualTo(target.Id));
             Assert.That(Field<NumericUpDown>(editor, "_power").Value, Is.EqualTo(81));
+            Assert.That(Field<ComboBox>(editor, "_animationPosition").SelectedIndex, Is.EqualTo((int)BattleMoveAnimationPosition.Both));
+            Assert.That(Field<MonsterMoveDescriptor>(editor, "_selected").AnimationId, Is.EqualTo(animation.Id));
             Invoke(editor, "UndoMove", null, EventArgs.Empty);
             Assert.That(Field<MonsterMoveDescriptor>(editor, "_selected").JsonData, Is.EqualTo(targetBefore));
             Field<ComboBox>(editor, "_category").SelectedIndex = (int)MonsterMoveCategory.Status;

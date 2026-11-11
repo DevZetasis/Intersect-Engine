@@ -291,7 +291,7 @@ public class MonsterBattleTests
         var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
         Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
         Assert.That(hail.VersionData, Is.EqualTo(expected));
-        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v4"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v5"));
     }
 
 
@@ -433,5 +433,27 @@ public class MonsterBattleTests
             Calls++;
             return view.LegalMoveSlots[0];
         }
+    }
+
+    [Test]
+    public void MoveUsedPublishesTheFrozenAuthoredAnimationAndPosition()
+    {
+        var owner = Guid.NewGuid();
+        var move = Move();
+        var animationId = Guid.NewGuid();
+        move.AnimationId = animationId;
+        move.AnimationPosition = BattleMoveAnimationPosition.Both;
+        var player = Actor(move);
+        var opponent = Actor(Move(priority: 5));
+        var session = Session(owner, player, opponent);
+        move.AnimationId = null;
+        move.AnimationPosition = BattleMoveAnimationPosition.Attacker;
+        Play(session);
+        var state = session.Snapshot(1);
+        var wire = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(state));
+        var used = wire.Events.Single(entry => entry.Kind == MonsterBattleEventKind.MoveUsed && entry.ActorId == player.Id);
+        Assert.That(used.AnimationId, Is.EqualTo(animationId));
+        Assert.That(used.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Both));
+        Assert.That(used.TargetId, Is.EqualTo(opponent.Id));
     }
 }

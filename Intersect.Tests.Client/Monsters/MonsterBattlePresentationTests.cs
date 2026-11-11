@@ -1,3 +1,6 @@
+using Intersect.Framework.Core.GameObjects.Animations;
+using Intersect.Client.Framework.Core.Sounds;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Intersect.Client.Framework.Graphics;
@@ -201,5 +204,95 @@ public class MonsterBattlePresentationTests
         Assert.That(model.PlayerHP, Is.EqualTo(18));
         model.Skip();
         Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+    }
+
+    [Test]
+    public void AuthoredAnchorsFollowActorAndTargetInBothDirections()
+    {
+        foreach (var playerAttacks in new[] { true, false })
+        {
+            var e = Event(MonsterBattleEventKind.MoveUsed, 0, playerAttacks);
+            Assert.That(MonsterBattleAnimation.Anchors(e), Is.EqualTo((e.TargetId, Guid.Empty)));
+            e.AnimationPosition = BattleMoveAnimationPosition.Attacker;
+            Assert.That(MonsterBattleAnimation.Anchors(e), Is.EqualTo((e.ActorId, Guid.Empty)));
+            e.AnimationPosition = BattleMoveAnimationPosition.Both;
+            Assert.That(MonsterBattleAnimation.Anchors(e), Is.EqualTo((e.ActorId, e.TargetId)));
+            e.TargetId = e.ActorId;
+            Assert.That(MonsterBattleAnimation.Anchors(e), Is.EqualTo((e.ActorId, Guid.Empty)));
+        }
+    }
+
+    [Test]
+    public void SoundStartsOnceOnMoveEventAndSkipStopsCompletedAndActiveAudio()
+    {
+        var (model, start) = Ready();
+        var animation = new AnimationDescriptor(Guid.NewGuid()) { Sound = "practice.wav", CompleteSound = true };
+        var sounds = new List<SoundStub>();
+        var adapter = new MonsterBattleAnimation([], [], id => id == animation.Id ? animation : null,
+            _ => throw new IOException("Missing texture"), name =>
+            {
+                Assert.That(name, Is.EqualTo("practice.wav"));
+                var sound = new SoundStub();
+                sounds.Add(sound);
+                return sound;
+            });
+        model.EventStarted = adapter.Begin;
+        model.EventEnded = adapter.End;
+        model.Interrupted = adapter.Cancel;
+        model.EffectDuration = entry => entry.Kind == MonsterBattleEventKind.MoveUsed ? adapter.Duration : .5;
+        var first = Event(MonsterBattleEventKind.MoveUsed, 0, true) with { AnimationId = animation.Id };
+        var second = Event(MonsterBattleEventKind.MoveUsed, 2, false) with { AnimationId = animation.Id };
+        var state = State(2, Guid.NewGuid(), start.Revision, [first, Event(MonsterBattleEventKind.MoveMissed, 1, true),
+            second, Event(MonsterBattleEventKind.DamageApplied, 3, false, 100, 100)]);
+        model.Accept(state);
+        Assert.That(sounds.Count, Is.EqualTo(1));
+        Assert.That(model.Accept(state), Is.False);
+        Assert.That(sounds.Count, Is.EqualTo(1));
+        model.Tick(.35);
+        Assert.That(sounds[0].Loaded, Is.True);
+        model.Advance();
+        Assert.That(sounds.Count, Is.EqualTo(2));
+        Assert.That(model.PlayerHP, Is.EqualTo(100));
+        Assert.That(model.OpponentHP, Is.EqualTo(100));
+        model.Skip();
+        Assert.That(sounds.All(sound => !sound.Loaded), Is.True);
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+
+        var missing = first with { AnimationId = Guid.NewGuid() };
+        adapter.Begin(missing);
+        Assert.That(adapter.Duration, Is.EqualTo(.35));
+        Assert.That(adapter.HasAuthoredImpact(missing), Is.False);
+        Assert.That(sounds.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void LongAuthoredLoopsAreCappedAndMissingLayersFallBack()
+    {
+        using var options = new OptionScope();
+        var texture = DispatchProxy.Create<IGameTexture, MonsterRosterLayoutTests.TextureStub>();
+        var animation = new AnimationDescriptor(Guid.NewGuid())
+        {
+            Lower = new AnimationLayer { Sprite = "test.png", XFrames = 2, YFrames = 2, FrameCount = 999, FrameSpeed = 999, LoopCount = int.MaxValue },
+            Upper = new AnimationLayer { Sprite = "test.png", XFrames = 0 },
+        };
+        var entry = Event(MonsterBattleEventKind.MoveUsed, 0, true) with { AnimationId = animation.Id };
+        var adapter = new MonsterBattleAnimation([], [], _ => animation, _ => texture, _ => null);
+        adapter.Begin(entry);
+        Assert.That(adapter.Duration, Is.EqualTo(4));
+        Assert.That(adapter.HasAuthoredImpact(entry), Is.True);
+        adapter.Cancel();
+        Assert.That(adapter.HasAuthoredImpact(entry), Is.False);
+        animation.Lower.FrameSpeed = 0;
+        adapter.Begin(entry);
+        Assert.That(adapter.Duration, Is.EqualTo(.35));
+        Assert.That(adapter.HasAuthoredImpact(entry), Is.False);
+    }
+
+    private sealed class SoundStub : ISound
+    {
+        public bool Loaded { get; set; } = true;
+        public bool Loop { get; set; }
+        public void Stop() => Loaded = false;
+        public bool Update() => Loaded;
     }
 }

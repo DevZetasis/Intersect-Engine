@@ -309,9 +309,13 @@ public class MonsterRosterLayoutTests
                 var restingX = ownSprite.X;
                 var animated = BattleState(6, 2, MonsterBattleOutcome.Victory); animated.BattleId = animationStart.BattleId;
                 animated.PreviousRevision = animationStart.Revision; animated.Opponent.Id = animationStart.Opponent.Id; animated.Opponent.HP = 0;
-                var authored = new AnimationDescriptor(Guid.NewGuid()) { Lower = new AnimationLayer { Sprite = "effect.png", FrameCount = 4, XFrames = 2, YFrames = 2, FrameSpeed = 50 } };
+                var authored = new AnimationDescriptor(Guid.NewGuid())
+                {
+                    Lower = new AnimationLayer { Sprite = "effect.png", FrameCount = 4, XFrames = 2, YFrames = 2, FrameSpeed = 50, LoopCount = 1 },
+                    Upper = new AnimationLayer { Sprite = "effect.png", FrameCount = 2, XFrames = 2, YFrames = 1, FrameSpeed = 100 },
+                };
                 AnimationDescriptor.Lookup.Set(authored.Id, authored);
-                animated.Events = [new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 0, ActorId = first.Id, TargetId = animated.Opponent.Id, Text = "Attack" },
+                animated.Events = [new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 0, ActorId = first.Id, TargetId = animated.Opponent.Id, AnimationId = authored.Id, AnimationPosition = BattleMoveAnimationPosition.Both, Text = "Attack" },
                     new() { Kind = MonsterBattleEventKind.DamageApplied, Order = 1, ActorId = first.Id, TargetId = animated.Opponent.Id, HPBefore = 30, HPAfter = 0, AnimationId = authored.Id, Text = "Impact" },
                     new() { Kind = MonsterBattleEventKind.MonsterFainted, Order = 2, ActorId = first.Id, TargetId = animated.Opponent.Id, Text = "Fainted" },
                     new() { Kind = MonsterBattleEventKind.BattleFinished, Order = 3, Text = "Won" }];
@@ -320,13 +324,26 @@ public class MonsterRosterLayoutTests
                 playback.Tick(.175); typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
                 Assert.That(ownSprite.X, Is.GreaterThan(restingX), "The move visibly lunges before HP changes.");
                 Assert.That(BattleButton("FightButton").IsDisabled, Is.True); Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.True);
-                playback.Advance(); playback.Tick(.1);
-                typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
                 var effect = Descendants(battleWindow).OfType<ImagePanel>().Single(c => c.Name == "BattleLowerEffect");
-                Assert.That(effect.Texture, Is.Not.Null); Assert.That(effect.IsHidden, Is.False);
-                AnimationDescriptor.Lookup.DeleteAt(authored.Id); // Missing animation falls back without blocking the battle.
-                typeof(MonsterBattleWindow).GetMethod("RefreshControls", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(battleWindow, null);
-                Assert.That(effect.IsHidden, Is.True);
+                var second = Descendants(battleWindow).OfType<ImagePanel>().Single(c => c.Name == "BattleLowerEffectSecond");
+                var upper = Descendants(battleWindow).OfType<ImagePanel>().Single(c => c.Name == "BattleUpperEffect");
+                Assert.That(effect.Texture, Is.Not.Null);
+                Assert.That(effect.IsHidden || second.IsHidden || upper.IsHidden, Is.False);
+                Assert.That(effect.X + effect.Width / 2, Is.EqualTo(ownSprite.X + ownSprite.Width / 2).Within(1));
+                Assert.That(second.X + second.Width / 2, Is.EqualTo(enemySprite.X + enemySprite.Width / 2).Within(1));
+                Assert.That(playback.OpponentHP, Is.EqualTo(30));
+                var layers = effect.Parent!.Children.ToList();
+                Assert.That(layers.IndexOf(effect), Is.LessThan(layers.IndexOf(ownSprite)));
+                Assert.That(layers.IndexOf(upper), Is.GreaterThan(layers.IndexOf(ownSprite)));
+                var uv = (float[])typeof(ImagePanel).GetField("_uv", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(effect)!;
+                Assert.That(uv[0], Is.EqualTo(.5f));
+                Assert.That(uv[1], Is.EqualTo(.5f));
+                playback.Advance();
+                Assert.That(effect.IsHidden && upper.IsHidden, Is.True);
+                Assert.That(playback.OpponentHP, Is.EqualTo(30));
+                playback.Tick(.1);
+                Assert.That(playback.OpponentHP, Is.LessThan(30));
+                AnimationDescriptor.Lookup.DeleteAt(authored.Id);
                 ClickBattle("SkipButton"); Assert.That(sent.Count, Is.EqualTo(1));
                 Assert.That(((ProgressBar)BattleLabel("OpponentHP")).Value, Is.Zero); Assert.That(enemySprite.IsHidden, Is.True);
                 Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);

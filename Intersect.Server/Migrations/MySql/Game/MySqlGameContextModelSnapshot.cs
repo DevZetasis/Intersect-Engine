@@ -453,6 +453,11 @@ namespace Intersect.Server.Migrations.MySql.Game
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");
 
+                    b.Property<int>("AnimationPosition")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<int>("Category")
                         .HasColumnType("int");
 

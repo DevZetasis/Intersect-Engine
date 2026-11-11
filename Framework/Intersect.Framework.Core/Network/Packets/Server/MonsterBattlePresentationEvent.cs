@@ -1,3 +1,4 @@
+using Intersect.Framework.Core.GameObjects.Monsters;
 using MessagePack;
 
 namespace Intersect.Network.Packets.Server;
@@ -18,4 +19,5 @@ public sealed record MonsterBattlePresentationEvent
     [Key(7)] public long HPAfter { get; set; }
     [Key(8)] public string Text { get; set; } = string.Empty;
     [Key(9)] public MonsterBattleActorView? Incoming { get; set; }
+    [Key(10)] public BattleMoveAnimationPosition AnimationPosition { get; set; }
 }

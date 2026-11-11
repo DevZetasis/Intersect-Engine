@@ -6,6 +6,10 @@ public static partial class Strings
 {
     public partial struct MonsterMoveEditor
     {
+        public static LocalizedString AnimationPosition = "Effect position";
+        public static LocalizedString AnimationTarget = "Target";
+        public static LocalizedString AnimationAttacker = "Attacker";
+        public static LocalizedString AnimationBoth = "Both";
         public static LocalizedString Menu = "Monster Move Editor";
         public static LocalizedString Id = "Move UUID";
         public static LocalizedString Name = "Move Name";
