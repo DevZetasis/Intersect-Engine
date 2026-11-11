@@ -148,4 +148,58 @@ public class MonsterBattlePresentationTests
         public void Dispose() => _property.SetValue(null, _previous);
     }
 
+
+    [Test]
+    public void SwitchKeepsOutgoingActorUntilSendOutAndDamagesIncomingActor()
+    {
+        var (model, start) = Ready();
+        var incoming = new MonsterBattleActorView { Id = Guid.NewGuid(), Name = "Reserve", HP = 34, MaximumHP = 45, BackBattleSprite = "reserve.png" };
+        var state = State(2, Guid.NewGuid(), start.Revision);
+        state.Player = new() { Id = incoming.Id, Name = incoming.Name, HP = 20, MaximumHP = 45, BackBattleSprite = incoming.BackBattleSprite };
+        state.Party = [new() { Slot = 0, Actor = start.Player }, new() { Slot = 1, Actor = state.Player }];
+        state.Events = [
+            new() { Kind = MonsterBattleEventKind.Withdraw, Order = 0, ActorId = Player, TargetId = Player },
+            new() { Kind = MonsterBattleEventKind.SendOut, Order = 1, ActorId = incoming.Id, TargetId = incoming.Id, Incoming = incoming },
+            new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 2, ActorId = Opponent, TargetId = incoming.Id },
+            new() { Kind = MonsterBattleEventKind.DamageApplied, Order = 3, ActorId = Opponent, TargetId = incoming.Id, HPBefore = 34, HPAfter = 20 },
+        ];
+        Assert.That(model.Accept(state), Is.True);
+        Assert.That(model.DisplayedPlayer!.Id, Is.EqualTo(Player));
+        Assert.That(model.PlayerHP, Is.EqualTo(100));
+        model.Advance();
+        Assert.That(model.DisplayedPlayer!.Id, Is.EqualTo(incoming.Id));
+        Assert.That(model.DisplayedPlayer.BackBattleSprite, Is.EqualTo("reserve.png"));
+        Assert.That(model.PlayerHP, Is.EqualTo(34));
+        model.Tick(4);
+        Assert.That(model.PlayerHP, Is.EqualTo(20));
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+    }
+
+    [Test]
+    public void FaintPlaybackCompletesBeforeReplacementAndSendOutClearsFaintedState()
+    {
+        var (model, start) = Ready();
+        var faint = State(2, Guid.NewGuid(), start.Revision,
+            [Event(MonsterBattleEventKind.DamageApplied, 0, false, 100, 0),
+                Event(MonsterBattleEventKind.MonsterFainted, 1, false)], playerHP: 0);
+        faint.Phase = MonsterBattlePhase.Replacement;
+        model.Accept(faint);
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.PlayingSequence));
+        model.Advance();
+        Assert.That(model.CurrentEvent!.Kind, Is.EqualTo(MonsterBattleEventKind.MonsterFainted));
+        model.Advance();
+        Assert.That(model.PlayerFainted, Is.True);
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.Replacement));
+        Assert.That(model.BeginAwaiting(), Is.True);
+
+        var state = State(3, Guid.NewGuid(), faint.Revision);
+        state.Player = new() { Id = Guid.NewGuid(), HP = 18, MaximumHP = 20 };
+        state.Party = [new() { Slot = 1, Actor = state.Player }];
+        state.Events = [new() { Kind = MonsterBattleEventKind.SendOut, ActorId = state.Player.Id, TargetId = state.Player.Id, Incoming = state.Player }];
+        model.Accept(state);
+        Assert.That(model.PlayerFainted, Is.False);
+        Assert.That(model.PlayerHP, Is.EqualTo(18));
+        model.Skip();
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+    }
 }

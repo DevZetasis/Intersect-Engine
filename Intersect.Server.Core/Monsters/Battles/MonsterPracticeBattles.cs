@@ -25,14 +25,15 @@ public static class MonsterPracticeBattles
             {
                 if (!player.IsAvailableForMonsterPractice) throw new InvalidOperationException("Character must be online, in game, alive and not busy with another interaction.");
                 var service = MonsterRoster.CreateService();
-                var owned = service.GetForBattle(player.Id, monsterId);
+                var party = service.GetPartyForBattle(player.Id);
+                var owned = party.SingleOrDefault(member => member.Id == monsterId)
+                    ?? throw new InvalidOperationException("Select a monster in this character's party.");
                 if (!owned.ConditionInitialized) throw new InvalidOperationException("Monster condition definitions are unavailable.");
                 if (owned.CurrentHP == 0) throw new InvalidOperationException("This monster has fainted. Heal its HP before battling.");
-                var expectedRevision = owned.Revision;
+                var expectedRevisions = party.ToDictionary(member => member.Id, member => member.Revision);
                 ValidateOwnedParty(player.Id, owned);
                 var species = MonsterSpeciesDescriptor.Get(owned.SpeciesId) ?? throw new InvalidOperationException("Owned species is missing.");
                 var opponent = MonsterSpeciesDescriptor.Get(opponentSpeciesId) ?? throw new InvalidOperationException("Opponent species is missing.");
-                var nature = owned.NatureId is { } natureId ? MonsterNatureDescriptor.Get(natureId) ?? throw new InvalidOperationException("Owned nature is missing.") : null;
                 var rules = Options.Instance.Monsters.Battle;
                 rules.Validate();
                 if (opponentLevel < 1 || opponentLevel > rules.MaxLevel) throw new InvalidOperationException("Opponent level is outside the battle rules.");
@@ -47,16 +48,33 @@ public static class MonsterPracticeBattles
                         var move = MonsterMoveDescriptor.Get(moveId.Value) ?? throw new InvalidOperationException("An assigned move is missing.");
                         return new MonsterBattleMove(move, MonsterTypeDescriptor.Get(move.TypeId) ?? throw new InvalidOperationException("A move type is missing."), condition?.MovePP[slot].Current);
                     }).ToArray();
-                    return new(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite, condition?.CurrentHP);
+                    return new(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite, condition?.CurrentHP, condition?.Slot ?? -1);
                 }
-                var ownActor = Actor(owned.Id, string.IsNullOrWhiteSpace(owned.Nickname) ? species.Name : owned.Nickname, species,
-                    owned.Level, owned.IVs, owned.EVs, nature, owned.MoveIds, owned);
+                var ownParty = party.Select(member =>
+                {
+                    ValidateOwnedParty(player.Id, member);
+                    if (!member.ConditionInitialized) throw new InvalidOperationException("Party monster condition definitions are unavailable.");
+                    var template = MonsterSpeciesDescriptor.Get(member.SpeciesId) ?? throw new InvalidOperationException("Owned species is missing.");
+                    var nature = member.NatureId is { } id
+                        ? MonsterNatureDescriptor.Get(id) ?? throw new InvalidOperationException("Owned nature is missing.")
+                        : null;
+                    return Actor(member.Id, string.IsNullOrWhiteSpace(member.Nickname) ? template.Name : member.Nickname,
+                        template, member.Level, member.IVs, member.EVs, nature, member.MoveIds, member);
+                }).ToArray();
                 var opponentActor = Actor(Guid.NewGuid(), opponent.Name, opponent, opponentLevel, MonsterAttributeGeneration.GenerateIVs(random), new(),
                     opponentNatureId is { } selected ? MonsterNatureDescriptor.Get(selected) : null,
                     MonsterMoveAssignment.Initial(opponent, opponentLevel, id => MonsterMoveDescriptor.Get(id) != null));
-                return new(new(player.Id, [ownActor]), new(null, [opponentActor]), rules, random, background: string.IsNullOrWhiteSpace(opponent.BattleBackground) ? species.BattleBackground : opponent.BattleBackground,
-                    persist: actor => expectedRevision = service.CommitBattle(player.Id, owned.Id, expectedRevision, actor.HP, actor.MaximumHP,
-                        actor.Moves.Select(m => new Database.PlayerData.Players.MonsterMovePP(m?.Definition.Id, m?.PP ?? 0, m?.Definition.MaximumPP ?? 0)).ToArray()));
+                return new(new(player.Id, ownParty, owned.Id), new(null, [opponentActor]), rules, random,
+                    background: string.IsNullOrWhiteSpace(opponent.BattleBackground) ? species.BattleBackground : opponent.BattleBackground,
+                    persistParty: actors =>
+                    {
+                        var changes = actors.Select(actor => new MonsterOwnershipService.BattleCondition(actor.Id,
+                            expectedRevisions[actor.Id], actor.HP, actor.MaximumHP,
+                            actor.Moves.Select(move => new Database.PlayerData.Players.MonsterMovePP(
+                                move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray())).ToArray();
+                        var revision = service.CommitBattle(player.Id, changes);
+                        foreach (var actor in actors) expectedRevisions[actor.Id] = revision;
+                    });
             }
         });
     }

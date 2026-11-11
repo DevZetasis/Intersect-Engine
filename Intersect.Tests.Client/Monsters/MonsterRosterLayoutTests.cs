@@ -200,11 +200,18 @@ public class MonsterRosterLayoutTests
             var sent = new List<Intersect.Network.Packets.Client.MonsterBattleActionPacket>();
             var battleWindow = new MonsterBattleWindow(canvas, packet => sent.Add(packet));
             var battleId = Guid.NewGuid();
+            var reserveId = Guid.NewGuid();
+            var faintedId = Guid.NewGuid();
             MonsterBattleStatePacket BattleState(long sequence, int turn, MonsterBattleOutcome outcome = MonsterBattleOutcome.Active) => new()
             {
                 PlayerId = player.Id, BattleId = battleId, Turn = turn, Revision = Guid.NewGuid(), Sequence = sequence, Outcome = outcome,
                 Player = new() { Id = first.Id, Name = "Owned", Level = 12, HP = 25, MaximumHP = 50, Sprite = species.Sprite },
                 Opponent = new() { Id = Guid.NewGuid(), Name = "Practice", Level = 12, HP = 30, MaximumHP = 60, Sprite = species.Sprite },
+                Party = [
+                    new() { Slot = 0, Actor = new() { Id = first.Id, Name = "Owned", Level = 12, HP = 25, MaximumHP = 50, Sprite = species.Sprite } },
+                    new() { Slot = 1, Actor = new() { Id = reserveId, Name = "Reserve", Level = 4, HP = 20, MaximumHP = 25, Sprite = species.Sprite } },
+                    new() { Slot = 2, Actor = new() { Id = faintedId, Name = "Fainted reserve", Level = 2, HP = 0, MaximumHP = 15, Sprite = species.Sprite } },
+                ],
                 Moves = [new() { Slot = 0, Name = "Practice Hit", Type = "Custom", Category = "Physical", PP = 19, MaximumPP = 20, Usable = true },
                     new() { Slot = 1, Name = "Status test", Type = "Custom", Category = "Status", PP = 20, MaximumPP = 20, UnavailableReason = "Effect not implemented" }],
                 Messages = ["Practice battle started."],
@@ -227,8 +234,19 @@ public class MonsterRosterLayoutTests
                 Button BattleButton(string name) => (Button)BattleLabel(name);
                 void ClickBattle(string name) => typeof(Control).GetMethod("InputNonUserMouseClicked", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(BattleButton(name), [MouseButton.Left, Point.Empty, false]);
-                foreach (var name in new[] { "BagButton", "MonstersBattleButton", "RunButton" }) Assert.That(BattleButton(name).IsDisabled, Is.True);
+                foreach (var name in new[] { "BagButton", "RunButton" }) Assert.That(BattleButton(name).IsDisabled, Is.True);
                 ClickBattle("RunButton"); Assert.That(sent, Is.Empty);
+                Assert.That(BattleButton("MonstersBattleButton").IsDisabled, Is.False);
+                ClickBattle("MonstersBattleButton");
+                Button PartyButton(int slot) => Descendants(Descendants(battleWindow).Single(c => c.Name == "BattlePartyMember" + slot))
+                    .OfType<Button>().Single();
+                Assert.That(PartyButton(0).Text, Is.EqualTo("Active"));
+                Assert.That(PartyButton(0).IsDisabled, Is.True);
+                Assert.That(PartyButton(1).IsDisabled, Is.False);
+                Assert.That(PartyButton(2).Text, Is.EqualTo("Fainted"));
+                Assert.That(PartyButton(2).IsDisabled, Is.True);
+                ClickBattle("BattlePartyBack");
+                Assert.That(Descendants(battleWindow).Single(c => c.Name == "BattleMainMenu").IsHidden, Is.False);
                 ClickBattle("FightButton");
                 // No deferred layout frame may be required to make the first opened move list readable.
                 for (var slot = 0; slot < 4; slot++)
@@ -268,8 +286,9 @@ public class MonsterRosterLayoutTests
                 Assert.That(((Button)BattleLabel("BattleMove1")).IsDisabled, Is.True);
                 Assert.That(((Button)BattleLabel("CloseBattleButton")).IsDisabled, Is.True);
                 var submit = typeof(MonsterBattleWindow).GetMethod("Submit", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                submit.Invoke(battleWindow, [1, false]); Assert.That(sent, Is.Empty);
-                submit.Invoke(battleWindow, [0, false]); submit.Invoke(battleWindow, [0, false]);
+                var moveKind = Intersect.Network.Packets.Client.MonsterBattleActionKind.Move;
+                submit.Invoke(battleWindow, [moveKind, 1, Guid.Empty]); Assert.That(sent, Is.Empty);
+                submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty]); submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty]);
                 Assert.That(sent.Count, Is.EqualTo(1));
                 Assert.That(sent[0].BattleId, Is.EqualTo(battleId));
                 Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.True);
@@ -313,10 +332,49 @@ public class MonsterRosterLayoutTests
                 Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);
                 var forfeitState = BattleState(8, 1); forfeitState.BattleId = Guid.NewGuid(); applyBattle.Invoke(packetHandler, [null, forfeitState]); battleWindow.Update();
                 ClickBattle("RunButton"); Assert.That(sent.Count, Is.EqualTo(1));
-                ClickBattle("ForfeitButton"); Assert.That(sent.Last().Forfeit, Is.True); Assert.That(sent.Count, Is.EqualTo(2));
+                ClickBattle("ForfeitButton"); Assert.That(sent.Last().Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.Forfeit)); Assert.That(sent.Count, Is.EqualTo(2));
                 var finished = BattleState(9, 1, MonsterBattleOutcome.Forfeit); finished.BattleId = forfeitState.BattleId;
                 applyBattle.Invoke(packetHandler, [null, finished]); battleWindow.Update();
                 battleWindow.Hide(); battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                var replacement = BattleState(10, 2); replacement.BattleId = Guid.NewGuid();
+                replacement.Phase = MonsterBattlePhase.Replacement;
+                replacement.Player.HP = replacement.Party[0].Actor.HP = 0;
+                applyBattle.Invoke(packetHandler, [null, replacement]); battleWindow.Update();
+                for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
+                Assert.That(BattleButton("FightButton").IsDisabled, Is.True);
+                Assert.That(BattleButton("BattlePartyBack").IsHidden, Is.True);
+                Assert.That(BattleButton("ForfeitButton").IsDisabled, Is.False);
+                var partyLayout = JObject.Parse(battleWindow.GetJsonUI(true));
+                var savedReserve = partyLayout.SelectTokens("$..BattlePartyMember1").Single();
+                savedReserve.SelectTokens("$..BattlePartySelect").Single()["Disabled"] = true;
+                content.LayoutJson = partyLayout.ToString();
+                battleWindow.LoadJsonUi(GameContentManager.UI.InGame, $"{width}x{height}", saveOutput: false);
+                content.LayoutJson = null;
+                for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
+                Assert.That(PartyButton(1).IsDisabled, Is.False, "Saved Gwen state must not disable a legal replacement.");
+                Assert.That(PartyButton(1).Width, Is.GreaterThanOrEqualTo(80));
+                Assert.That(PartyButton(1).ToCanvas(PartyButton(1).Size).Y, Is.LessThanOrEqualTo(canvas.Height));
+                var mouseClick = typeof(Control).GetMethod("InputNonUserMouseClicked", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                mouseClick.Invoke(PartyButton(1), [MouseButton.Left, Point.Empty, false]);
+                Assert.That(sent.Last().Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.Replace));
+                Assert.That(sent.Last().MonsterId, Is.EqualTo(reserveId));
+                Assert.That(sent.Count, Is.EqualTo(3));
+                var sentOut = BattleState(11, 2);
+                sentOut.BattleId = replacement.BattleId;
+                sentOut.PreviousRevision = replacement.Revision;
+                sentOut.Opponent.Id = replacement.Opponent.Id;
+                sentOut.Player = sentOut.Party[1].Actor;
+                sentOut.Player.BackBattleSprite = "reserve-back.png";
+                sentOut.Moves = [new() { Slot = 0, Name = "Reserve hit", PP = 4, MaximumPP = 7, Usable = true }];
+                sentOut.Events = [new() { Kind = MonsterBattleEventKind.SendOut, ActorId = reserveId, TargetId = reserveId, Incoming = sentOut.Player }];
+                applyBattle.Invoke(packetHandler, [null, sentOut]); battleWindow.Update();
+                Assert.That(BattleLabel("PlayerName").Text, Does.Contain("Reserve"));
+                Assert.That(BattleLabel("PlayerHPValue").Text, Is.EqualTo("HP 20 / 25"));
+                ClickBattle("SkipButton");
+                Assert.That(ownSprite.IsHidden, Is.False);
+                ClickBattle("FightButton");
+                Assert.That(BattleLabel("BattleMove0").Text, Does.Contain("PP 4/7"));
+                Assert.That(sent.Count, Is.EqualTo(3));
                 player.MonsterBattleState = null; battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
             }
             finally { Intersect.Client.Interface.Interface.InputBlockingComponents.Remove(battleWindow); }

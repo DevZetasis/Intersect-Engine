@@ -291,7 +291,147 @@ public class MonsterBattleTests
         var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
         Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
         Assert.That(hail.VersionData, Is.EqualTo(expected));
-        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v3"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v4"));
     }
 
+
+    [Test]
+    public void VoluntarySwitchRetargetsAttackAndCannotSpendPlayerPpOrRepeat()
+    {
+        var owner = Guid.NewGuid();
+        var a = Actor(Move());
+        var b = Actor(Move());
+        var opponent = Actor(Move(priority: 5));
+        var session = new MonsterBattleSession(new(owner, [a, b]), new(null, [opponent]), MonsterBattleRules.Generation4, new LastRandom());
+        MonsterBattleStatePacket? state = null;
+        var registry = new MonsterBattleRegistry((recipient, packet) =>
+        {
+            Assert.That(recipient, Is.EqualTo(owner));
+            state = packet;
+        });
+        registry.Start(owner, () => session);
+        Assert.That(state!.Party.Select(member => member.Actor.Id), Is.EqualTo(new[] { a.Id, b.Id }));
+        Assert.That(registry.ReservesMonster(b.Id), Is.True);
+        var action = Action(session);
+        action.Kind = MonsterBattleActionKind.Switch;
+        action.MonsterId = b.Id;
+        var packer = Intersect.Network.MessagePacker.Instance;
+        var decoded = packer.Deserialize<MonsterBattleActionPacket>(packer.Serialize(action))!;
+        Assert.That(decoded.MonsterId, Is.EqualTo(b.Id));
+        Assert.That(decoded.Kind, Is.EqualTo(MonsterBattleActionKind.Switch));
+        registry.Submit(owner, decoded);
+        Assert.That(state!.Player.Id, Is.EqualTo(b.Id));
+        Assert.That(state.Turn, Is.EqualTo(2));
+        Assert.That(state.Events.Take(3).Select(entry => entry.Kind), Is.EqualTo(new[]
+            { MonsterBattleEventKind.Withdraw, MonsterBattleEventKind.SendOut, MonsterBattleEventKind.MoveUsed }));
+        Assert.That(state.Events.Single(entry => entry.Kind == MonsterBattleEventKind.MoveUsed).ActorId, Is.EqualTo(opponent.Id));
+        Assert.That(state.Events.Single(entry => entry.Kind == MonsterBattleEventKind.DamageApplied).TargetId, Is.EqualTo(b.Id));
+        Assert.That(state.Party[0].Actor.HP, Is.EqualTo(a.HP));
+        Assert.That(state.Player.HP, Is.LessThan(b.HP));
+        Assert.That(state.Moves[0].PP, Is.EqualTo(20));
+        var revision = state.Revision;
+        var hp = state.Player.HP;
+        Assert.Throws<InvalidOperationException>(() => registry.Submit(owner, decoded));
+        Assert.That(state.Revision, Is.EqualTo(revision));
+        Assert.That(state.Player.HP, Is.EqualTo(hp));
+        Assert.That(state.Events, Is.Empty);
+        registry.Cancel(owner, "Disconnected.", true);
+        Assert.That(registry.ReservesMonster(a.Id), Is.False);
+        Assert.That(registry.ReservesMonster(b.Id), Is.False);
+    }
+
+    [Test]
+    public void ForcedReplacementHasNoAttackOrPpCostAndDefeatWaitsForLastMonster()
+    {
+        var owner = Guid.NewGuid();
+        var a = Actor(Move(), hp: 1);
+        var b = Actor(Move(), hp: 1);
+        var fainted = Actor(Move());
+        fainted.Damage(fainted.HP);
+        var opponent = Actor(Move(priority: 5));
+        var provider = new CountingProvider();
+        var session = new MonsterBattleSession(new(owner, [a, b, fainted]), new(null, [opponent]),
+            MonsterBattleRules.Generation4, new LastRandom(), provider);
+        var unknown = Action(session);
+        unknown.Kind = MonsterBattleActionKind.Switch;
+        foreach (var invalid in new[] { Guid.NewGuid(), a.Id, fainted.Id })
+        {
+            unknown.MonsterId = invalid;
+            Assert.Throws<InvalidOperationException>(() => session.Submit(owner, unknown));
+        }
+        unknown.Kind = MonsterBattleActionKind.Replace;
+        unknown.MonsterId = b.Id;
+        Assert.Throws<InvalidOperationException>(() => session.Submit(owner, unknown));
+        Assert.That(provider.Calls, Is.Zero);
+
+        Play(session);
+        var afterFaint = session.Snapshot(2);
+        Assert.That(afterFaint.Phase, Is.EqualTo(MonsterBattlePhase.Replacement));
+        Assert.That(afterFaint.Outcome, Is.EqualTo(MonsterBattleOutcome.Active));
+        Assert.That(afterFaint.Player.HP, Is.Zero);
+        Assert.That(afterFaint.Moves[0].PP, Is.EqualTo(20));
+        Assert.That(afterFaint.Events.Count(entry => entry.Kind == MonsterBattleEventKind.MoveUsed), Is.EqualTo(1));
+        Assert.Throws<InvalidOperationException>(() => Play(session));
+        var replacement = Action(session);
+        replacement.Kind = MonsterBattleActionKind.Replace;
+        replacement.MonsterId = b.Id;
+        Assert.Throws<InvalidOperationException>(() => session.Submit(Guid.NewGuid(), replacement));
+        session.Submit(owner, replacement);
+        var afterReplace = session.Snapshot(3);
+        Assert.That(afterReplace.Player.Id, Is.EqualTo(b.Id));
+        Assert.That(afterReplace.Player.HP, Is.EqualTo(1));
+        Assert.That(afterReplace.Turn, Is.EqualTo(afterFaint.Turn));
+        Assert.That(afterReplace.Phase, Is.EqualTo(MonsterBattlePhase.Commands));
+        Assert.That(afterReplace.Events.Select(entry => entry.Kind), Is.EqualTo(new[] { MonsterBattleEventKind.SendOut }));
+        Assert.That(provider.Calls, Is.EqualTo(1));
+        var wire = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(afterReplace));
+        Assert.That(wire.Party.Select(member => member.Actor.HP), Is.EqualTo(new long[] { 0, 1, 0 }));
+        Assert.That(wire.Events.Single().Incoming!.Id, Is.EqualTo(b.Id));
+        Play(session);
+        Assert.That(session.Outcome, Is.EqualTo(MonsterBattleOutcome.Defeat));
+    }
+
+    [Test]
+    public void DisconnectWhileChoosingReplacementReleasesEntireParty()
+    {
+        var owner = Guid.NewGuid();
+        var first = Actor(Move(), hp: 1);
+        var second = Actor(Move());
+        var session = new MonsterBattleSession(new(owner, [first, second]), new(null, [Actor(Move(priority: 5))]),
+            MonsterBattleRules.Generation4, new LastRandom());
+        var registry = new MonsterBattleRegistry((_, _) => { });
+        registry.Start(owner, () => session);
+        registry.Submit(owner, Action(session));
+        Assert.That(session.Phase, Is.EqualTo(MonsterBattlePhase.Replacement));
+        registry.Cancel(owner, "Disconnected.", true);
+        Assert.That(session.Outcome, Is.EqualTo(MonsterBattleOutcome.Forfeit));
+        Assert.That(registry.HasActive(owner), Is.False);
+        Assert.That(registry.ReservesMonster(first.Id) || registry.ReservesMonster(second.Id), Is.False);
+    }
+
+    [Test]
+    public void SimultaneousKnockoutsUseWholePartyBeforeRequestingReplacement()
+    {
+        var a = Actor(Move(), hp: 1);
+        var b = Actor(Move(), hp: 1);
+        var opponent = Actor(Move(), hp: 1);
+        var player = new MonsterBattleSide(Guid.NewGuid(), [a, b]);
+        var enemy = new MonsterBattleSide(null, [opponent]);
+        a.Damage(1);
+        Assert.That(MonsterBattleSession.KnockoutOutcome(player, enemy), Is.Null);
+        opponent.Damage(1);
+        Assert.That(MonsterBattleSession.KnockoutOutcome(player, enemy), Is.EqualTo(MonsterBattleOutcome.Victory));
+        b.Damage(1);
+        Assert.That(MonsterBattleSession.KnockoutOutcome(player, enemy), Is.EqualTo(MonsterBattleOutcome.Draw));
+    }
+
+    private sealed class CountingProvider : IMonsterBattleDecisionProvider
+    {
+        public int Calls { get; private set; }
+        public int ChooseMove(MonsterBattleDecision view, IMonsterRandom random)
+        {
+            Calls++;
+            return view.LegalMoveSlots[0];
+        }
+    }
 }

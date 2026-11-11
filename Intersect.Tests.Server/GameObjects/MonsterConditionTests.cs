@@ -296,4 +296,89 @@ public sealed class MonsterConditionTests
         Assert.That(Load(a).MovePP[0].Current, Is.EqualTo(17));
     }
 
+
+    [Test]
+    public void BattlePartyLoadExcludesStorageAndOtherOwnersAndReservesBench()
+    {
+        var a = Grant();
+        var b = Grant();
+        var stored = Grant();
+        var other = Service().Grant(_other, _species.Id, Guid.NewGuid()).Id;
+        Service().Move(_owner, stored, Load(stored).Revision, MonsterLocation.Storage);
+        Spend(b);
+        var registry = new MonsterBattleRegistry((_, _) => { });
+        var service = Service(registry.ReservesMonster);
+        var party = service.GetPartyForBattle(_owner);
+        Assert.That(party.Select(member => member.Id), Is.EqualTo(new[] { a, b }));
+        Assert.That(party[1].MovePP[0].Current, Is.EqualTo(17));
+        Assert.That(party[1].CurrentHP, Is.EqualTo(Load(b).CurrentHP));
+
+        var type = new MonsterTypeDescriptor(_move.TypeId);
+        MonsterBattleCombatant Owned(MonsterInstance row) =>
+            new(new(row.Id, row.Level, new(row.MaximumHPAtLastUpdate, 50, 50, 50, 50, 50), [type.Id]),
+                row.Id.ToString(), "", [new(_move, type, row.MovePP[0].Current), null, null, null],
+                currentHP: row.CurrentHP, partySlot: row.Slot);
+        var opponent = new MonsterBattleCombatant(new(Guid.NewGuid(), 1, new(500, 5, 50, 5, 50, 5), [type.Id]),
+            "Practice", "", [new(_move, type), null, null, null]);
+        var revisions = party.ToDictionary(row => row.Id, row => row.Revision);
+        var session = new MonsterBattleSession(new(_owner, party.Select(Owned).ToArray()), new(null, [opponent]),
+            MonsterBattleRules.Generation4, new SystemMonsterRandom(), persistParty: actors =>
+            {
+                var token = service.CommitBattle(_owner, actors.Select(actor => new MonsterOwnershipService.BattleCondition(
+                    actor.Id, revisions[actor.Id], actor.HP, actor.MaximumHP,
+                    actor.Moves.Select(move => new MonsterMovePP(move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray())).ToArray());
+                foreach (var actor in actors) revisions[actor.Id] = token;
+            });
+        registry.Start(_owner, () => session);
+        var turn = Action(session);
+        turn.Kind = MonsterBattleActionKind.Switch;
+        foreach (var invalid in new[] { stored, other })
+        {
+            turn.MonsterId = invalid;
+            Assert.Throws<InvalidOperationException>(() => registry.Submit(_owner, turn));
+        }
+        Assert.Throws<InvalidOperationException>(() => service.Move(_owner, b, Load(b).Revision, MonsterLocation.Storage));
+        Assert.Throws<InvalidOperationException>(() => service.Heal(_owner, b, MonsterHealingScope.Party, MonsterRecovery.Both));
+        Assert.Throws<InvalidOperationException>(() => service.ReplaceMove(_owner, b, 0, _second.Id));
+
+        var originalA = Load(a);
+        var originalB = Load(b);
+        turn.MonsterId = b;
+        registry.Submit(_owner, turn);
+        var switched = Load(b);
+        Assert.That(switched.CurrentHP, Is.LessThan(originalB.CurrentHP));
+        Assert.That(switched.MovePP, Is.EqualTo(originalB.MovePP));
+        Assert.That(Load(a).Revision, Is.EqualTo(originalA.Revision));
+        var switchBack = Action(session);
+        switchBack.Kind = MonsterBattleActionKind.Switch;
+        switchBack.MonsterId = a;
+        registry.Submit(_owner, switchBack);
+        Assert.That(Load(b).Revision, Is.EqualTo(switched.Revision));
+        Assert.That(Load(a).CurrentHP, Is.LessThan(originalA.CurrentHP));
+        Assert.That(Load(a).MovePP, Is.EqualTo(originalA.MovePP));
+        registry.Cancel(_owner, "Done.");
+        Assert.DoesNotThrow(() => service.Move(_owner, b, Load(b).Revision, MonsterLocation.Storage));
+    }
+
+    [Test]
+    public void BattleBatchRollsBackOnSecondWriteAndVerifiesEveryRowAfterAmbiguousCommit()
+    {
+        var a = Load(Grant());
+        var b = Load(Grant());
+        MonsterOwnershipService.BattleCondition Change(MonsterInstance row) => new(row.Id, row.Revision,
+            row.CurrentHP - 1, row.MaximumHPAtLastUpdate, row.MovePP.ToArray());
+        var changes = new[] { Change(a), Change(b) };
+        var failure = new FailSecondUpdate();
+        var failingService = new MonsterOwnershipService(() => new AtomicFailureContext(_options, failure), _ => true, 6,
+            species: _ => _species, moveExists: id => id == _move.Id, move: _ => _move, reserved: _ => false);
+        Assert.Catch(() => failingService.CommitBattle(_owner, changes));
+        Assert.That(Load(a.Id).Revision, Is.EqualTo(a.Revision));
+        Assert.That(Load(b.Id).Revision, Is.EqualTo(b.Revision));
+        _afterFailure = true;
+        var token = Service().CommitBattle(_owner, changes);
+        Assert.That(Load(a.Id).Revision, Is.EqualTo(token));
+        Assert.That(Load(b.Id).Revision, Is.EqualTo(token));
+        Assert.That(Load(a.Id).CurrentHP, Is.EqualTo(a.CurrentHP - 1));
+        Assert.That(Load(b.Id).CurrentHP, Is.EqualTo(b.CurrentHP - 1));
+    }
 }

@@ -89,6 +89,19 @@ public sealed partial class MonsterOwnershipService
         }
     }
 
+    internal MonsterInstance[] GetPartyForBattle(Guid ownerId)
+    {
+        lock (MonsterTypeRules.ContentGate)
+        lock (Gate(ownerId))
+        {
+            GetOwned(ownerId);
+            using var db = _createContext();
+            return db.OwnedMonsters.AsNoTracking()
+                .Where(monster => monster.OwnerPlayerId == ownerId && monster.Location == MonsterLocation.Party)
+                .OrderBy(monster => monster.Slot).ToArray();
+        }
+    }
+
     /// <summary>Server administrative operation; intentionally has no client grant packet.</summary>
     public OwnedMonsterSummary Grant(Guid ownerId, Guid speciesId, Guid requestId)
         => Grant(ownerId, speciesId, requestId, out _);

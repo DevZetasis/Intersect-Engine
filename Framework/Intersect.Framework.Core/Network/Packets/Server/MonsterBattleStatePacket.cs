@@ -4,6 +4,15 @@ namespace Intersect.Network.Packets.Server;
 
 public enum MonsterBattleOutcome { Active = 0, Victory = 1, Defeat = 2, Forfeit = 3, Cancelled = 4, Draw = 5 }
 
+public enum MonsterBattlePhase { Commands, Resolving, Replacement, Completed, Ended }
+
+[MessagePackObject]
+public sealed class MonsterBattlePartyMember
+{
+    [Key(0)] public int Slot { get; set; }
+    [Key(1)] public MonsterBattleActorView Actor { get; set; } = new();
+}
+
 [MessagePackObject]
 public sealed class MonsterBattleActorView
 {
@@ -48,5 +57,7 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(11)] public Guid PreviousRevision { get; set; }
     [Key(12)] public bool IsCorrection { get; set; }
     [Key(13)] public string Background { get; set; } = string.Empty;
+    [Key(14)] public MonsterBattlePhase Phase { get; set; }
+    [Key(15)] public MonsterBattlePartyMember[] Party { get; set; } = [];
 
 }

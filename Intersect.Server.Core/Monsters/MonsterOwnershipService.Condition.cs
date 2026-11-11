@@ -45,8 +45,17 @@ public sealed partial class MonsterOwnershipService
             return monsters.Length;
         }
     }
-    internal Guid CommitBattle(Guid owner, Guid monsterId, Guid expectedRevision, long hp, long maximum, MonsterMovePP[] pp)
+    internal sealed record BattleCondition(Guid Id, Guid ExpectedRevision, long HP, long MaximumHP, MonsterMovePP[] PP);
+
+    internal Guid CommitBattle(Guid owner, Guid monsterId, Guid expectedRevision, long hp, long maximum, MonsterMovePP[] pp) =>
+        CommitBattle(owner, [new BattleCondition(monsterId, expectedRevision, hp, maximum, pp)]);
+
+    internal Guid CommitBattle(Guid owner, IReadOnlyList<BattleCondition> changes)
     {
+        if (changes.Count == 0) throw new ArgumentException("A battle commit requires condition changes.", nameof(changes));
+        var ids = changes.Select(change => change.Id).ToArray();
+        if (ids.Distinct().Count() != ids.Length) throw new ArgumentException("Duplicate battle monster.", nameof(changes));
+
         lock (MonsterTypeRules.ContentGate)
         lock (Gate(owner))
         {
@@ -54,19 +63,27 @@ public sealed partial class MonsterOwnershipService
             try
             {
                 using var db = _createContext();
-                var monster = db.OwnedMonsters.SingleOrDefault(m => m.Id == monsterId && m.OwnerPlayerId == owner && m.Location == MonsterLocation.Party)
-                    ?? throw new InvalidOperationException("Owned battle monster is unavailable.");
-                if (monster.Revision != expectedRevision) throw new InvalidOperationException("Monster changed while the battle was active.");
-                monster.SetCondition(hp, maximum, pp, token);
+                var monsters = db.OwnedMonsters.Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner &&
+                    m.Location == MonsterLocation.Party).ToDictionary(m => m.Id);
+                foreach (var change in changes)
+                {
+                    if (!monsters.TryGetValue(change.Id, out var monster) || monster.Revision != change.ExpectedRevision)
+                        throw new InvalidOperationException("Owned battle monster changed or is no longer in the party.");
+                    monster.SetCondition(change.HP, change.MaximumHP, change.PP, token);
+                }
+                // EF commits all tracked updates in one transaction, including concurrency checks.
                 if (db.SaveChanges() <= 0) throw new InvalidOperationException("Turn condition was not committed.");
                 return token;
             }
             catch
             {
-                // Resolve an ambiguous connection failure after commit using its unique revision token.
+                // Only accept an ambiguous commit if every participating write matches the new token and values.
                 using var verify = _createContext();
-                var saved = verify.OwnedMonsters.AsNoTracking().SingleOrDefault(m => m.Id == monsterId && m.OwnerPlayerId == owner);
-                if (saved?.Revision == token && saved.CurrentHP == hp && saved.MaximumHPAtLastUpdate == maximum && saved.MovePP.SequenceEqual(pp)) return token;
+                var saved = verify.OwnedMonsters.AsNoTracking().Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner)
+                    .ToDictionary(m => m.Id);
+                if (changes.All(change => saved.TryGetValue(change.Id, out var monster) && monster.Revision == token &&
+                    monster.CurrentHP == change.HP && monster.MaximumHPAtLastUpdate == change.MaximumHP &&
+                    monster.MovePP.SequenceEqual(change.PP))) return token;
                 throw;
             }
         }

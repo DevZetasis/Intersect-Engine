@@ -14,7 +14,15 @@ public static partial class Strings
         public static LocalizedString Actor = "{00} \u2014 Level {01}";
         public static LocalizedString Fight = "Fight";
         public static LocalizedString Bag = "Bag (unavailable)";
-        public static LocalizedString Monsters = "Monsters (unavailable)";
+        public static LocalizedString PartyMenu = "Monsters";
+        public static LocalizedString PartyActive = "Active";
+        public static LocalizedString PartyFainted = "Fainted";
+        public static LocalizedString PartySwitch = "Switch";
+        public static LocalizedString PartyAlreadyActive = "This monster is already active.";
+        public static LocalizedString PartyHasFainted = "This monster has fainted.";
+        public static LocalizedString PartySendOut = "Send this monster into battle.";
+        public static LocalizedString PartyMember = "#{00}  {01}  Lv. {02}";
+        public static LocalizedString Replacement = "Choose a replacement monster.";
         public static LocalizedString Run = "Run (unavailable)";
         public static LocalizedString Back = "Back";
         public static LocalizedString Next = "Next";

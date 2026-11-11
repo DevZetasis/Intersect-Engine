@@ -39,8 +39,9 @@ public sealed class MonsterBattleCombatant
     public string FrontBattleSprite { get; }
     public string BackBattleSprite { get; }
     public long HP { get; private set; }
+    public int PartySlot { get; }
     public long MaximumHP => Calculation.Stats.HP;
-    public MonsterBattleCombatant(MonsterCalculationActor actor, string name, string sprite, MonsterBattleMove?[] moves, string frontBattleSprite = "", string backBattleSprite = "", long? currentHP = null)
+    public MonsterBattleCombatant(MonsterCalculationActor actor, string name, string sprite, MonsterBattleMove?[] moves, string frontBattleSprite = "", string backBattleSprite = "", long? currentHP = null, int partySlot = -1)
     {
         if (actor.Id == Guid.Empty || actor.Level < 1 || actor.Stats.ToArray().Any(value => value <= 0) ||
             moves.Length != 4 || moves.Where(move => move != null).Select(move => move!.Definition.Id).Distinct().Count() != moves.Count(move => move != null))
@@ -50,10 +51,11 @@ public sealed class MonsterBattleCombatant
         Calculation = actor with { TypeIds = actor.TypeIds.ToArray() };
         Name = name; Sprite = sprite; FrontBattleSprite = frontBattleSprite; BackBattleSprite = backBattleSprite;
         Moves = moves.Select(move => move == null ? null : new MonsterBattleMove(move.Definition, move.Type, move.PP)).ToArray();
+        PartySlot = partySlot;
         HP = currentHP ?? MaximumHP;
         if (HP < 0 || HP > MaximumHP) throw new InvalidOperationException("Invalid starting HP.");
     }
-    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves, FrontBattleSprite, BackBattleSprite, HP);
+    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves, FrontBattleSprite, BackBattleSprite, HP, PartySlot);
     internal void RestoreResources(long hp, int[] pp)
     {
         if (hp < 0 || hp > MaximumHP || pp.Length != 4) throw new InvalidOperationException("Invalid HP checkpoint.");
@@ -64,8 +66,23 @@ public sealed class MonsterBattleCombatant
     public MonsterBattleActorView View() => new() { Id = Id, Name = Name, Sprite = Sprite, Level = Calculation.Level, HP = HP, MaximumHP = MaximumHP, FrontBattleSprite = FrontBattleSprite, BackBattleSprite = BackBattleSprite };
 }
 
-/// <summary>Side slots allow future two-active formats; this resolver currently requires exactly one per side.</summary>
-public sealed record MonsterBattleSide(Guid? ControllerId, IReadOnlyList<MonsterBattleCombatant> Active);
+/// <summary>Party members are stable throughout the battle. The resolver owns the active slot.</summary>
+public sealed class MonsterBattleSide
+{
+    public Guid? ControllerId { get; }
+    public IReadOnlyList<MonsterBattleCombatant> Party { get; }
+    public MonsterBattleCombatant Active { get; private set; }
+
+    public MonsterBattleSide(Guid? controllerId, IReadOnlyList<MonsterBattleCombatant> party, Guid? activeId = null)
+    {
+        ControllerId = controllerId;
+        Party = party.ToArray();
+        Active = activeId is { } id ? Party.Single(member => member.Id == id) : Party.First();
+    }
+
+    internal void Select(Guid id) => Active = Party.Single(member => member.Id == id);
+    internal MonsterBattleSide Copy() => new(ControllerId, Party.Select(member => member.Copy()).ToArray(), Active.Id);
+}
 
 public sealed record MonsterBattleDecision(IReadOnlyList<int> LegalMoveSlots, MonsterBattleActorView Self, IReadOnlyList<MonsterBattleActorView> Opponents);
 public interface IMonsterBattleDecisionProvider
