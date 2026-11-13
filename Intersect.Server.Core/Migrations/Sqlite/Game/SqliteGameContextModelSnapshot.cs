@@ -433,6 +433,10 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("EffectsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Effects");
+
                     b.Property<int>("Category")
                         .HasColumnType("INTEGER");
 

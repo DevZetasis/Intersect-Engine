@@ -381,4 +381,34 @@ public sealed class MonsterConditionTests
         Assert.That(Load(a.Id).CurrentHP, Is.EqualTo(a.CurrentHP - 1));
         Assert.That(Load(b.Id).CurrentHP, Is.EqualTo(b.CurrentHP - 1));
     }
+
+    [Test]
+    public void HealingMoveCommitsHpAndPpBeforePublishAndSurvivesDisconnect()
+    {
+        _move.Category = MonsterMoveCategory.Status;
+        _move.Target = MonsterMoveTarget.Self;
+        _move.Priority = 1;
+        _move.Effects = [new() { Kind = MonsterMoveEffectKind.RestoreHP, HealingMethod = MonsterHealingMethod.Percentage, Amount = 100 }];
+        var id = Grant();
+        Spend(id, 5, 3);
+        var before = Load(id);
+        MonsterBattleStatePacket? published = null;
+        var registry = new MonsterBattleRegistry((_, packet) =>
+        {
+            Assert.That(Load(id).CurrentHP, Is.EqualTo(packet.Player.HP));
+            Assert.That(Load(id).MovePP[0].Current, Is.EqualTo(packet.Moves[0].PP));
+            published = packet;
+        });
+        var service = Service(registry.ReservesMonster);
+        var session = Session(service, id);
+        registry.Start(_owner, () => session);
+        registry.Submit(_owner, Action(session));
+        Assert.That(published!.Events.Any(entry => entry.Kind == MonsterBattleEventKind.HPRecovered), Is.True);
+        Assert.That(Load(id).CurrentHP, Is.GreaterThan(before.CurrentHP));
+        Assert.That(Load(id).MovePP[0].Current, Is.EqualTo(16));
+        var committed = Load(id);
+        registry.Cancel(_owner, "Disconnected.", true);
+        Assert.That(Load(id).CurrentHP, Is.EqualTo(committed.CurrentHP));
+        Assert.That(Load(id).Revision, Is.EqualTo(committed.Revision));
+    }
 }

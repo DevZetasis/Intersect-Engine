@@ -264,7 +264,7 @@ public class MonsterNatureTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_natures", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterNatures();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveAnimationPosition().TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveEffects().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         Assert.That(migration.UpOperations.Count, Is.EqualTo(1));

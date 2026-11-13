@@ -27,11 +27,35 @@ public sealed class MonsterMoveDescriptor : DatabaseObject<MonsterMoveDescriptor
     public MonsterMoveTarget Target { get; set; } = MonsterMoveTarget.OneOpponent;
     public Guid? AnimationId { get; set; }
     public BattleMoveAnimationPosition AnimationPosition { get; set; }
+    public const int MaximumEffects = 4;
+    [NotMapped] public List<MonsterMoveEffect> Effects { get; set; } = [];
+
+    [Column("Effects"), JsonIgnore]
+    public string EffectsJson
+    {
+        get => JsonConvert.SerializeObject(Effects);
+        set => Effects = JsonConvert.DeserializeObject<List<MonsterMoveEffect>>(value ?? "[]") ?? [];
+    }
+
+    [NotMapped, JsonIgnore]
+    public bool HasValidEffects => Effects != null && Effects.Count <= MaximumEffects &&
+        Effects.All(effect => effect is { IsValid: true }) &&
+        (Effects.Count == 0 || Target == MonsterMoveTarget.OneOpponent ||
+         (Category == MonsterMoveCategory.Status && Target == MonsterMoveTarget.Self &&
+          Effects.All(effect => effect.Target == MonsterMoveEffectTarget.Self)));
+
+    [NotMapped, JsonIgnore]
+    public bool ExecutableInBattle => Target switch
+    {
+        MonsterMoveTarget.Self => Category == MonsterMoveCategory.Status && Effects.Count > 0,
+        MonsterMoveTarget.OneOpponent => Category != MonsterMoveCategory.Status || Effects.Count > 0,
+        _ => false,
+    };
     [NotMapped, JsonIgnore]
     public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Folder != null &&
         TypeId != Guid.Empty && Enum.IsDefined(Category) && Enum.IsDefined(Target) &&
         BasePower >= (Category == MonsterMoveCategory.Status ? 0 : 1) && Accuracy is >= 1 and <= 100 &&
-        MaximumPP is >= 1 and <= 999 && AnimationId != Guid.Empty && Enum.IsDefined(AnimationPosition);
+        MaximumPP is >= 1 and <= 999 && AnimationId != Guid.Empty && Enum.IsDefined(AnimationPosition) && HasValidEffects;
     public override void Load(string json, bool keepCreationTime = false)
     {
         var id = Id;
@@ -41,6 +65,7 @@ public sealed class MonsterMoveDescriptor : DatabaseObject<MonsterMoveDescriptor
             if (properties.Property(nameof(MaximumPP), StringComparison.OrdinalIgnoreCase) == null) MaximumPP = 20;
             if (properties.Property(nameof(AnimationPosition), StringComparison.OrdinalIgnoreCase) == null)
                 AnimationPosition = BattleMoveAnimationPosition.Target;
+            if (properties.Property(nameof(Effects), StringComparison.OrdinalIgnoreCase) == null) Effects = [];
             base.Load(json, keepCreationTime);
         }
         finally { Id = id; }

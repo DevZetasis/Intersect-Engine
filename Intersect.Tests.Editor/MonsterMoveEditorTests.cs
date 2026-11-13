@@ -71,6 +71,19 @@ public class MonsterMoveEditorTests
             Select(Field<ComboBox>(editor, "_animation"), animation.Id);
             Assert.That((draft.Category, draft.BasePower, draft.Accuracy, draft.AlwaysHits, draft.Priority, draft.Target, draft.AnimationId),
                 Is.EqualTo((MonsterMoveCategory.Special, 81, 92, true, -4, MonsterMoveTarget.AllBattlefield, (Guid?)animation.Id)));
+            var effects = Field<FlowLayoutPanel>(editor, "_effects");
+            Field<ComboBox>(editor, "_target").SelectedIndex = (int)MonsterMoveTarget.OneOpponent;
+            Invoke(effects, "AddEffect");
+            Field<ComboBox>(effects, "_stat").SelectedIndex = 4;
+            Field<NumericUpDown>(effects, "_amount").Value = 2;
+            Assert.That(draft.Effects.Single(), Is.EqualTo(new MonsterMoveEffect { Stat = MonsterStat.Speed, Amount = 2 }));
+            Invoke(effects, "AddEffect");
+            Field<ComboBox>(effects, "_kind").SelectedIndex = (int)MonsterMoveEffectKind.RestoreHP;
+            Field<ComboBox>(effects, "_method").SelectedIndex = (int)MonsterHealingMethod.Percentage;
+            Field<NumericUpDown>(effects, "_amount").Value = 50;
+            Assert.That(draft.Effects[1].Amount, Is.EqualTo(50));
+            Assert.That(draft.Effects[1].Target, Is.EqualTo(MonsterMoveEffectTarget.Self));
+            Assert.That(draft.HasValidEffects, Is.True);
             Assert.That(source.JsonData, Is.EqualTo(before));
             Invoke(editor, "CopyMove", null, EventArgs.Empty);
             Invoke(editor, "SelectMove", target.Id);
@@ -79,6 +92,12 @@ public class MonsterMoveEditorTests
             Assert.That(Field<NumericUpDown>(editor, "_power").Value, Is.EqualTo(81));
             Assert.That(Field<ComboBox>(editor, "_animationPosition").SelectedIndex, Is.EqualTo((int)BattleMoveAnimationPosition.Both));
             Assert.That(Field<MonsterMoveDescriptor>(editor, "_selected").AnimationId, Is.EqualTo(animation.Id));
+            var pasted = Field<MonsterMoveDescriptor>(editor, "_selected");
+            Assert.That(pasted.Effects, Is.EqualTo(draft.Effects));
+            Field<ListBox>(effects, "_effects").SelectedIndex = 1;
+            Invoke(effects, "RemoveEffect");
+            Assert.That(pasted.Effects.Count, Is.EqualTo(1));
+            Assert.That(draft.Effects.Count, Is.EqualTo(2));
             Invoke(editor, "UndoMove", null, EventArgs.Empty);
             Assert.That(Field<MonsterMoveDescriptor>(editor, "_selected").JsonData, Is.EqualTo(targetBefore));
             Field<ComboBox>(editor, "_category").SelectedIndex = (int)MonsterMoveCategory.Status;

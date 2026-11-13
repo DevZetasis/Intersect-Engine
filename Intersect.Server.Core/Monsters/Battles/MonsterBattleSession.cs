@@ -1,4 +1,5 @@
 using Intersect.Config;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Network.Packets.Client;
 using Intersect.Network.Packets.Server;
 using Intersect.Server.Monsters.Calculations;
@@ -43,7 +44,7 @@ public sealed class MonsterBattleSession
             player.Active.HP == 0 || opponent.Active.HP == 0 ||
             player.Active.LegalSlots().Length == 0 || opponent.Active.LegalSlots().Length == 0 ||
             (persist != null && (player.Party.Count != 1 || persistParty != null)))
-            throw new InvalidOperationException("Practice requires a healthy active monster and opponent with usable damaging moves.");
+            throw new InvalidOperationException("Practice requires a healthy active monster and opponent with usable moves.");
 
         _background = background;
         _persist = persistParty ?? (persist == null ? null : changed => persist(changed.Single()));
@@ -65,7 +66,7 @@ public sealed class MonsterBattleSession
     {
         lock (_gate)
         {
-            var resources = _playerSide.Party.Concat(_opponentSide.Party).Select(actor => (Actor: actor, actor.HP, PP: PP(actor))).ToArray();
+            var resources = _playerSide.Party.Concat(_opponentSide.Party).Select(actor => (Actor: actor, actor.HP, PP: PP(actor), actor.Stages)).ToArray();
             var active = Player.Id;
             var turn = Turn;
             var revision = Revision;
@@ -78,7 +79,11 @@ public sealed class MonsterBattleSession
             {
                 lock (_gate)
                 {
-                    foreach (var saved in resources) saved.Actor.RestoreResources(saved.HP, saved.PP);
+                    foreach (var saved in resources)
+                    {
+                        saved.Actor.RestoreResources(saved.HP, saved.PP);
+                        saved.Actor.Stages = saved.Stages;
+                    }
                     _playerSide.Select(active);
                     Turn = turn;
                     Revision = revision;
@@ -136,8 +141,8 @@ public sealed class MonsterBattleSession
                     {
                         var playerMove = Player.Moves[action.MoveSlot]!;
                         var order = MonsterBattleCalculator.OrderActions([
-                            new(Player.Id, playerMove.Definition.Priority, Player.Calculation.Stats.Speed),
-                            new(Opponent.Id, opponentMove.Definition.Priority, Opponent.Calculation.Stats.Speed)], _random);
+                            new(Player.Id, playerMove.Definition.Priority, Player.EffectiveSpeed),
+                            new(Opponent.Id, opponentMove.Definition.Priority, Opponent.EffectiveSpeed)], _random);
                         foreach (var entry in order)
                         {
                             if (entry.ActorId == Player.Id) Attack(Player, Opponent, playerMove, messages, events);
@@ -167,6 +172,7 @@ public sealed class MonsterBattleSession
             messages.Add($"{Player.Name} withdrew.");
             events.Add(new() { Kind = MonsterBattleEventKind.Withdraw, Order = events.Count, ActorId = Player.Id, TargetId = Player.Id, Text = messages[^1] });
         }
+        Player.Stages = new();
         _playerSide.Select(target);
         messages.Add($"{Player.Name} entered the battle!");
         events.Add(new() { Kind = MonsterBattleEventKind.SendOut, Order = events.Count, ActorId = Player.Id, TargetId = Player.Id, Incoming = Player.View(), Text = messages[^1] });
@@ -176,32 +182,101 @@ public sealed class MonsterBattleSession
         List<string> messages, List<MonsterBattlePresentationEvent> events)
     {
         if (attacker.HP == 0 || defender.HP == 0) return;
-        move.Consume(); // An executed attempt spends PP even when it misses or meets immunity.
-        void Emit(MonsterBattleEventKind kind, string text, long before = 0, long after = 0) => events.Add(new()
+        move.Consume(); // An executed attempt spends PP even when it misses or cannot change a value.
+        var definition = move.Definition;
+        var status = definition.Category == MonsterMoveCategory.Status;
+        var targetsOpponent = !status || definition.Effects.Any(effect => effect.Target == MonsterMoveEffectTarget.Opponent);
+        var primary = targetsOpponent ? defender : attacker;
+
+        void Emit(MonsterBattleEventKind kind, MonsterBattleCombatant target, string text, long before = 0, long after = 0,
+            MonsterStat stat = MonsterStat.None, int stage = 0, bool summarize = true)
         {
-            Kind = kind, Order = events.Count, ActorId = attacker.Id, TargetId = defender.Id,
-            MoveId = move.Definition.Id, AnimationId = move.Definition.AnimationId, AnimationPosition = move.Definition.AnimationPosition, HPBefore = before, HPAfter = after, Text = text,
-        });
-        messages.Add($"{attacker.Name} used {move.Definition.Name}!");
-        Emit(MonsterBattleEventKind.MoveUsed, messages[^1]);
-        if (!MonsterBattleCalculator.Hits(move.Definition, 0, 0, _random)) { messages.Add("The attack missed!"); Emit(MonsterBattleEventKind.MoveMissed, messages[^1]); return; }
-        var critical = MonsterBattleCalculator.CriticalHit(0, _random);
-        var damage = MonsterBattleCalculator.Damage(attacker.Calculation, defender.Calculation, move.Definition, move.Type,
-            _rules, new(), critical, _random);
-        var appliedDamage = Math.Min(damage, defender.HP);
-        var hpBefore = defender.HP;
-        defender.Damage(damage);
-        Emit(MonsterBattleEventKind.DamageApplied, damage == 0 ? "It had no effect." : $"{defender.Name} lost {appliedDamage} HP.", hpBefore, defender.HP);
-        if (damage == 0) messages.Add("It had no effect.");
-        else
-        {
-            if (critical) { messages.Add("Critical hit!"); Emit(MonsterBattleEventKind.CriticalHit, messages[^1]); }
-            var effectiveness = defender.Calculation.TypeIds.Aggregate(1d, (value, type) => value * move.Type.Effectiveness.GetValueOrDefault(type, 1));
-            if (effectiveness > 1) { messages.Add("It's super effective!"); Emit(MonsterBattleEventKind.TypeEffectiveness, messages[^1]); }
-            else if (effectiveness < 1) { messages.Add("It's not very effective."); Emit(MonsterBattleEventKind.TypeEffectiveness, messages[^1]); }
-            messages.Add($"{defender.Name} lost {appliedDamage} HP.");
+            if (summarize) messages.Add(text);
+            events.Add(new()
+            {
+                Kind = kind, Order = events.Count, ActorId = attacker.Id, TargetId = target.Id,
+                MoveId = definition.Id, AnimationId = definition.AnimationId, AnimationPosition = definition.AnimationPosition,
+                HPBefore = before, HPAfter = after, Stat = stat, StageAfter = stage,
+                Text = text,
+            });
         }
-        if (defender.HP == 0) { messages.Add($"{defender.Name} fainted!"); Emit(MonsterBattleEventKind.MonsterFainted, messages[^1]); }
+
+        Emit(MonsterBattleEventKind.MoveUsed, primary, $"{attacker.Name} used {definition.Name}!");
+        if (targetsOpponent && !MonsterBattleCalculator.Hits(definition, 0, 0, _random))
+        {
+            Emit(MonsterBattleEventKind.MoveMissed, primary, "The attack missed!");
+            return;
+        }
+
+        if (!status)
+        {
+            var critical = MonsterBattleCalculator.CriticalHit(0, _random);
+            var modifiers = new MonsterBattleModifiers
+            {
+                AttackStage = attacker.Stage(MonsterStat.Attack),
+                DefenseStage = defender.Stage(MonsterStat.Defense),
+                SpecialAttackStage = attacker.Stage(MonsterStat.SpecialAttack),
+                SpecialDefenseStage = defender.Stage(MonsterStat.SpecialDefense),
+            };
+            var damage = MonsterBattleCalculator.Damage(attacker.Calculation, defender.Calculation, definition, move.Type,
+                _rules, modifiers, critical, _random);
+            var before = defender.HP;
+            defender.Damage(damage);
+            if (damage == 0)
+            {
+                Emit(MonsterBattleEventKind.DamageApplied, defender, "It had no effect.", before, defender.HP);
+                return;
+            }
+            var damageMessage = $"{defender.Name} lost {before - defender.HP} HP.";
+            // Show damage first during playback while preserving the established summary order.
+            Emit(MonsterBattleEventKind.DamageApplied, defender, damageMessage, before, defender.HP, summarize: false);
+            if (critical) Emit(MonsterBattleEventKind.CriticalHit, defender, "Critical hit!");
+            var effectiveness = defender.Calculation.TypeIds.Aggregate(1d, (value, type) => value * move.Type.Effectiveness.GetValueOrDefault(type, 1));
+            if (effectiveness > 1) Emit(MonsterBattleEventKind.TypeEffectiveness, defender, "It's super effective!");
+            else if (effectiveness < 1) Emit(MonsterBattleEventKind.TypeEffectiveness, defender, "It's not very effective.");
+            messages.Add(damageMessage);
+            if (defender.HP == 0) Emit(MonsterBattleEventKind.MonsterFainted, defender, $"{defender.Name} fainted!");
+        }
+
+        foreach (var effect in definition.Effects)
+        {
+            var target = effect.Target == MonsterMoveEffectTarget.Self ? attacker : defender;
+            if (target.HP == 0)
+            {
+                Emit(MonsterBattleEventKind.EffectFailed, target, $"{target.Name} has fainted.");
+                continue;
+            }
+
+            if (effect.Kind == MonsterMoveEffectKind.RestoreHP)
+            {
+                var before = target.HP;
+                // Divide first to avoid overflowing even for a very large maximum HP.
+                var amount = effect.HealingMethod == MonsterHealingMethod.Fixed ? effect.Amount :
+                    Math.Max(1, target.MaximumHP / 100 * effect.Amount + target.MaximumHP % 100 * effect.Amount / 100);
+                var restored = target.RecoverHP(amount);
+                if (restored == 0) Emit(MonsterBattleEventKind.EffectFailed, target, $"{target.Name} is already at full HP!");
+                else Emit(MonsterBattleEventKind.HPRecovered, target, $"{target.Name} restored {restored} HP!", before, target.HP);
+                continue;
+            }
+
+            var change = target.ChangeStage(effect.Stat, effect.Amount);
+            var stat = effect.Stat switch
+            {
+                MonsterStat.SpecialAttack => "Special Attack",
+                MonsterStat.SpecialDefense => "Special Defense",
+                _ => effect.Stat.ToString(),
+            };
+            if (change == 0)
+            {
+                var limit = effect.Amount > 0 ? "higher" : "lower";
+                Emit(MonsterBattleEventKind.EffectFailed, target, $"{target.Name}'s {stat} won't go any {limit}!");
+                continue;
+            }
+            var direction = change > 0 ? "rose" : "fell";
+            var magnitude = Math.Abs(change) switch { 1 => "", 2 => " sharply", _ => " drastically" };
+            Emit(MonsterBattleEventKind.StatStageChanged, target, $"{target.Name}'s {stat}{magnitude} {direction}!",
+                stat: effect.Stat, stage: target.Stage(effect.Stat));
+        }
     }
 
     internal static MonsterBattleOutcome? KnockoutOutcome(MonsterBattleSide player, MonsterBattleSide opponent)
@@ -238,6 +313,7 @@ public sealed class MonsterBattleSession
 
         if (Outcome != MonsterBattleOutcome.Active)
         {
+            ClearStages();
             Phase = MonsterBattlePhase.Completed;
             events.Add(new() { Kind = MonsterBattleEventKind.BattleFinished, Order = events.Count, Text = messages[^1] });
             return;
@@ -281,10 +357,16 @@ public sealed class MonsterBattleSession
         lock (_gate) if (Outcome == MonsterBattleOutcome.Active) Finish(disconnect ? MonsterBattleOutcome.Forfeit : MonsterBattleOutcome.Cancelled, reason);
     }
 
+    private void ClearStages()
+    {
+        foreach (var actor in _playerSide.Party.Concat(_opponentSide.Party)) actor.Stages = new();
+    }
+
     private void Finish(MonsterBattleOutcome result, string message)
     {
         _previousRevision = Revision;
         Outcome = result;
+        ClearStages();
         Phase = MonsterBattlePhase.Ended;
         Revision = Guid.NewGuid();
         _messages = [message];

@@ -6,6 +6,22 @@ public static partial class Strings
 {
     public partial struct MonsterMoveEditor
     {
+        public static LocalizedString InvalidEffects =
+            "Check move effects. Use One Opponent for damaging moves with effects, and Self or One Opponent for Status moves. Self moves can only affect the user.";
+        public static LocalizedString Effects = "Move effects";
+        public static LocalizedString StatStage = "Modify stat stage";
+        public static LocalizedString RestoreHP = "Restore HP";
+        public static LocalizedString FixedHP = "Fixed HP";
+        public static LocalizedString PercentHP = "% of maximum HP";
+        public static LocalizedString EffectKind = "Effect";
+        public static LocalizedString EffectTarget = "Recipient";
+        public static LocalizedString EffectSelf = "Self";
+        public static LocalizedString EffectOpponent = "Opponent";
+        public static LocalizedString EffectStat = "Stat";
+        public static LocalizedString HealingMethod = "Healing method";
+        public static LocalizedString EffectAmount = "Amount";
+        public static LocalizedString AddEffect = "Add effect";
+        public static LocalizedString RemoveEffect = "Remove";
         public static LocalizedString AnimationPosition = "Effect position";
         public static LocalizedString AnimationTarget = "Target";
         public static LocalizedString AnimationAttacker = "Attacker";

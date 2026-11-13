@@ -1,3 +1,4 @@
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Network.Packets.Server;
 
 namespace Intersect.Client.Interface.Game.Monsters;
@@ -12,6 +13,8 @@ public sealed class MonsterBattlePlayback
     public MonsterBattlePresentationEvent? CurrentEvent => Phase == MonsterBattlePresentationPhase.PlayingSequence ? State?.Events.ElementAtOrDefault(_index) : null;
     public string Text { get; private set; } = string.Empty;
     public MonsterBattleActorView? DisplayedPlayer { get; private set; }
+    internal MonsterStatValues PlayerStages { get; private set; } = new();
+    internal MonsterStatValues OpponentStages { get; private set; } = new();
     public double PlayerHP { get; private set; }
     public double OpponentHP { get; private set; }
     public bool PlayerFainted { get; private set; }
@@ -27,7 +30,7 @@ public sealed class MonsterBattlePlayback
     private double _elapsed;
     private double Duration => Math.Clamp((CurrentEvent is { } current ? EffectDuration?.Invoke(current) : null) ?? (CurrentEvent?.Kind switch
     {
-        MonsterBattleEventKind.MoveUsed => .35, MonsterBattleEventKind.DamageApplied => .5,
+        MonsterBattleEventKind.MoveUsed => .35, MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered => .5,
         MonsterBattleEventKind.MonsterFainted => .55, _ => .45,
     }), .1, MonsterBattleAnimation.MaximumSeconds);
     public bool Accept(MonsterBattleStatePacket state)
@@ -73,9 +76,13 @@ public sealed class MonsterBattlePlayback
             if ((entry.ActorId != player.Id && entry.ActorId != state.Opponent.Id) ||
                 (entry.TargetId != player.Id && entry.TargetId != state.Opponent.Id)) return false;
             if (entry.Kind == MonsterBattleEventKind.Withdraw && (entry.ActorId != player.Id || entry.TargetId != player.Id)) return false;
+            var maximum = entry.TargetId == player.Id ? player.MaximumHP : state.Opponent.MaximumHP;
             if (entry.Kind == MonsterBattleEventKind.DamageApplied &&
-                (entry.HPAfter < 0 || entry.HPBefore < entry.HPAfter ||
-                entry.HPBefore > (entry.TargetId == player.Id ? player.MaximumHP : state.Opponent.MaximumHP))) return false;
+                (entry.HPAfter < 0 || entry.HPBefore < entry.HPAfter || entry.HPBefore > maximum)) return false;
+            if (entry.Kind == MonsterBattleEventKind.HPRecovered &&
+                (entry.HPBefore <= 0 || entry.HPAfter <= entry.HPBefore || entry.HPAfter > maximum)) return false;
+            if (entry.Kind == MonsterBattleEventKind.StatStageChanged &&
+                (!MonsterMoveEffect.SupportsStage(entry.Stat) || entry.StageAfter is < -6 or > 6)) return false;
         }
         return player.Id == state.Player.Id;
     }
@@ -85,16 +92,33 @@ public sealed class MonsterBattlePlayback
         var entry = CurrentEvent!;
         Text = entry.Text;
         EventStarted?.Invoke(entry);
+        if (entry.Kind == MonsterBattleEventKind.StatStageChanged)
+        {
+            if (entry.TargetId == DisplayedPlayer?.Id) PlayerStages = PlayerStages.With(entry.Stat, entry.StageAfter);
+            else OpponentStages = OpponentStages.With(entry.Stat, entry.StageAfter);
+        }
         if (entry.Kind != MonsterBattleEventKind.SendOut || entry.Incoming is not { } incoming) return;
         DisplayedPlayer = incoming;
+        PlayerStages = ReadStages(incoming);
         PlayerHP = incoming.HP;
         PlayerFainted = false;
+    }
+
+    private static MonsterStatValues ReadStages(MonsterBattleActorView actor)
+    {
+        var stages = actor.StatStages;
+        return stages is { Length: 5 }
+            ? new(0, Math.Clamp(stages[0], -6, 6), Math.Clamp(stages[1], -6, 6),
+                Math.Clamp(stages[2], -6, 6), Math.Clamp(stages[3], -6, 6), Math.Clamp(stages[4], -6, 6))
+            : new();
     }
 
     private void Synchronize()
     {
         if (State is not { } state) { Phase = MonsterBattlePresentationPhase.Waiting; return; }
         DisplayedPlayer = state.Player;
+        PlayerStages = ReadStages(state.Player);
+        OpponentStages = ReadStages(state.Opponent);
         PlayerHP = Math.Clamp(state.Player.HP, 0, Math.Max(0, state.Player.MaximumHP));
         OpponentHP = Math.Clamp(state.Opponent.HP, 0, Math.Max(0, state.Opponent.MaximumHP));
         PlayerFainted = PlayerHP == 0; OpponentFainted = OpponentHP == 0;
@@ -115,7 +139,7 @@ public sealed class MonsterBattlePlayback
         {
             var duration = Duration; var step = Math.Min(seconds, Math.Max(0, duration - _elapsed));
             _elapsed += step; seconds -= step;
-            if (CurrentEvent is { Kind: MonsterBattleEventKind.DamageApplied } damage)
+            if (CurrentEvent is { Kind: MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered } damage)
             {
                 var hp = damage.HPBefore + (damage.HPAfter - (double)damage.HPBefore) * Math.Clamp(_elapsed / duration, 0, 1);
                 if (damage.TargetId == DisplayedPlayer!.Id) PlayerHP = hp; else OpponentHP = hp;
@@ -141,7 +165,7 @@ public sealed class MonsterBattlePlayback
     public void Advance()
     {
         if (Phase != MonsterBattlePresentationPhase.PlayingSequence) return;
-        if (CurrentEvent is { Kind: MonsterBattleEventKind.DamageApplied } damage)
+        if (CurrentEvent is { Kind: MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered } damage)
         {
             if (damage.TargetId == DisplayedPlayer!.Id) PlayerHP = damage.HPAfter;
             else OpponentHP = damage.HPAfter;
@@ -158,6 +182,7 @@ public sealed class MonsterBattlePlayback
     {
         Interrupted?.Invoke();
         State = null; DisplayedPlayer = null; _lastSequence = 0; Phase = MonsterBattlePresentationPhase.Waiting; _index = 0; _elapsed = 0; Text = string.Empty;
+        PlayerStages = OpponentStages = new();
         PlayerHP = OpponentHP = 0; PlayerFainted = OpponentFainted = false;
     }
 }

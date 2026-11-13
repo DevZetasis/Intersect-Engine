@@ -23,6 +23,7 @@ public sealed class FrmMonsterMove : EditorForm
     private readonly DarkComboBox _target = Choice();
     private readonly DarkComboBox _animation = Choice();
     private readonly DarkComboBox _animationPosition = Choice();
+    private readonly MonsterMoveEffectsControl _effects = new();
     private readonly DarkNumericUpDown _power = new() { Minimum = 0, Maximum = int.MaxValue, Value = 1 };
     private readonly DarkNumericUpDown _pp = new() { Minimum = 1, Maximum = 999, Value = 20 };
     private readonly DarkNumericUpDown _accuracy = new() { Minimum = 1, Maximum = 100, Value = 100 };
@@ -70,6 +71,7 @@ public sealed class FrmMonsterMove : EditorForm
         AddField(Strings.MonsterMoveEditor.Target, _target);
         AddField(Strings.MonsterMoveEditor.Animation, _animation);
         AddField(Strings.MonsterMoveEditor.AnimationPosition, _animationPosition);
+        AddField(Strings.MonsterMoveEditor.Effects, _effects);
         _animationPosition.Items.AddRange(new object[] { Strings.MonsterMoveEditor.AnimationTarget.ToString(),
             Strings.MonsterMoveEditor.AnimationAttacker.ToString(), Strings.MonsterMoveEditor.AnimationBoth.ToString() });
         _category.Items.AddRange(new object[] { Strings.MonsterMoveEditor.Physical.ToString(), Strings.MonsterMoveEditor.Special.ToString(), Strings.MonsterMoveEditor.Status.ToString() });
@@ -163,6 +165,7 @@ public sealed class FrmMonsterMove : EditorForm
     private void ShowFields()
     {
         _fields.Enabled = _selected != null;
+        _effects.Bind(_selected);
         if (_selected == null) return;
         _loading = true;
         try
@@ -224,6 +227,11 @@ public sealed class FrmMonsterMove : EditorForm
     private void SaveMoves(object? sender, EventArgs e)
     {
         var changed = _drafts.Values.Where(type => type.JsonData != _originals[type.Id]).ToArray();
+        if (changed.Any(move => !move.HasValidEffects))
+        {
+            DarkMessageBox.ShowWarning(Strings.MonsterMoveEditor.InvalidEffects, Text);
+            return;
+        }
         if (changed.Any(type => !type.IsValid || MonsterTypeDescriptor.Get(type.TypeId) == null ||
             (type.AnimationId is { } animation && AnimationDescriptor.Get(animation) == null)))
         {

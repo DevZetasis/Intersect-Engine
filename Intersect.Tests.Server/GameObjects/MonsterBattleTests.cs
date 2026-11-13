@@ -291,7 +291,7 @@ public class MonsterBattleTests
         var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
         Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
         Assert.That(hail.VersionData, Is.EqualTo(expected));
-        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v5"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v6"));
     }
 
 
@@ -455,5 +455,222 @@ public class MonsterBattleTests
         Assert.That(used.AnimationId, Is.EqualTo(animationId));
         Assert.That(used.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Both));
         Assert.That(used.TargetId, Is.EqualTo(opponent.Id));
+    }
+
+    private static MonsterMoveDescriptor Status(params MonsterMoveEffect[] effects)
+    {
+        var move = Move(MonsterMoveCategory.Status);
+        move.BasePower = 0;
+        move.Target = effects.Any(effect => effect.Target == MonsterMoveEffectTarget.Opponent)
+            ? MonsterMoveTarget.OneOpponent : MonsterMoveTarget.Self;
+        move.Effects = effects.ToList();
+        return move;
+    }
+
+    private static MonsterBattleCombatant EffectActor(long maximum, long hp, long speed, params MonsterMoveDescriptor[] moves)
+    {
+        var slots = new MonsterBattleMove?[4];
+        for (var index = 0; index < moves.Length; index++)
+            slots[index] = new(moves[index], new MonsterTypeDescriptor(Element));
+        return new(new(Guid.NewGuid(), 50, new(maximum, 50, 50, 50, 50, speed), [Element]),
+            "Effect tester", "", slots, currentHP: hp);
+    }
+
+    [Test]
+    public void StatusMovesClampEveryStageAndUseActualDeltaWithoutDamage()
+    {
+        var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed, Amount = 1 });
+        foreach (var stat in Enum.GetValues<MonsterStat>().Where(MonsterMoveEffect.SupportsStage))
+        foreach (var direction in new[] { -1, 1 })
+        {
+            var move = Status(new MonsterMoveEffect { Stat = stat, Amount = direction * 5 },
+                new MonsterMoveEffect { Stat = stat, Amount = direction * 4 },
+                new MonsterMoveEffect { Stat = stat, Amount = direction * 2 });
+            move.AlwaysHits = false;
+            move.Accuracy = 1;
+            var session = Session(Guid.NewGuid(), Actor(move), Actor(idle));
+            Play(session);
+            var state = session.Snapshot(1);
+            Assert.That(state.Player.StatStages[(int)stat - (int)MonsterStat.Attack], Is.EqualTo(direction * 6));
+            var ownEvents = state.Events.Where(e => e.ActorId == state.Player.Id).ToArray();
+            Assert.That(ownEvents.Select(e => e.Kind), Is.EqualTo(new[] { MonsterBattleEventKind.MoveUsed,
+                MonsterBattleEventKind.StatStageChanged, MonsterBattleEventKind.StatStageChanged, MonsterBattleEventKind.EffectFailed }));
+            Assert.That(ownEvents[2].Text, Does.Not.Contain("sharply").And.Not.Contain("drastically"));
+            Assert.That(state.Player.HP, Is.EqualTo(200));
+            Assert.That(state.Moves[0].PP, Is.EqualTo(19));
+        }
+
+        Assert.That(Enumerable.Range(-6, 13).Select(stage => MonsterBattleCalculator.ApplyStatStage(840, stage)),
+            Is.EqualTo(new long[] { 210, 240, 280, 336, 420, 560, 840, 1260, 1680, 2100, 2520, 2940, 3360 }));
+    }
+
+    [Test]
+    public void PhysicalAndSpecialDamageUseTheirOwnStages()
+    {
+        foreach (var category in new[] { MonsterMoveCategory.Physical, MonsterMoveCategory.Special })
+        {
+            var attack = category == MonsterMoveCategory.Physical ? MonsterStat.Attack : MonsterStat.SpecialAttack;
+            var defense = category == MonsterMoveCategory.Physical ? MonsterStat.Defense : MonsterStat.SpecialDefense;
+            long DamageAfter(MonsterStat? stat, MonsterMoveEffectTarget target)
+            {
+                var setup = Status(new MonsterMoveEffect
+                {
+                    Stat = stat ?? MonsterStat.Speed, Amount = 2, Target = target,
+                });
+                var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed });
+                var session = Session(Guid.NewGuid(), EffectActor(500, 500, 20, setup, Move(category)), Actor(idle, hp: 500));
+                Play(session);
+                Play(session, 1);
+                var damage = session.Snapshot(2).Events.Single(e => e.Kind == MonsterBattleEventKind.DamageApplied);
+                return damage.HPBefore - damage.HPAfter;
+            }
+
+            var baseline = DamageAfter(null, MonsterMoveEffectTarget.Self);
+            Assert.That(DamageAfter(attack, MonsterMoveEffectTarget.Self), Is.GreaterThan(baseline));
+            Assert.That(DamageAfter(defense, MonsterMoveEffectTarget.Opponent), Is.LessThan(baseline));
+        }
+    }
+
+    [Test]
+    public void SpeedChangesApplyNextTurnAndSwitchingClearsStages()
+    {
+        var setup = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed, Amount = 2 });
+        var a = EffectActor(1000, 1000, 20, setup, Move());
+        var b = EffectActor(1000, 1000, 10, Move());
+        var opponent = Actor(Move(), hp: 1000, speed: 30);
+        var owner = Guid.NewGuid();
+        var session = new MonsterBattleSession(new(owner, [a, b]), new(null, [opponent]), MonsterBattleRules.Generation4, new LastRandom());
+        Play(session);
+        Assert.That(session.Snapshot(1).Events.First().ActorId, Is.EqualTo(opponent.Id));
+        Play(session, 1);
+        Assert.That(session.Snapshot(2).Events.First().ActorId, Is.EqualTo(a.Id));
+
+        var toB = Action(session);
+        toB.Kind = MonsterBattleActionKind.Switch;
+        toB.MonsterId = b.Id;
+        session.Submit(owner, toB);
+        Assert.That(session.Snapshot(3).Party[0].Actor.StatStages, Is.All.Zero);
+        var back = Action(session);
+        back.Kind = MonsterBattleActionKind.Switch;
+        back.MonsterId = a.Id;
+        session.Submit(owner, back);
+        Play(session, 1);
+        Assert.That(session.Snapshot(4).Events.First().ActorId, Is.EqualTo(opponent.Id));
+
+        Play(session);
+        Assert.That(session.Snapshot(5).Player.StatStages[4], Is.EqualTo(2));
+        session.Cancel("Disconnected.", true);
+        Assert.That(session.Snapshot(6).Player.StatStages, Is.All.Zero);
+    }
+
+    [Test]
+    public void OpponentDebuffChecksAccuracyAndDuplicateActionCannotReapplyIt()
+    {
+        var move = Status(new MonsterMoveEffect { Target = MonsterMoveEffectTarget.Opponent, Stat = MonsterStat.Attack, Amount = -2 });
+        var opponent = Actor(Move(), hp: 1000);
+        move.AlwaysHits = false;
+        move.Accuracy = 1;
+        var owner = Guid.NewGuid();
+        var miss = Session(owner, Actor(move, hp: 1000), opponent);
+        Play(miss);
+        Assert.That(miss.Snapshot(1).Events.Any(e => e.Kind == MonsterBattleEventKind.MoveMissed), Is.True);
+        Assert.That(miss.Snapshot(1).Opponent.StatStages[0], Is.Zero);
+        Assert.That(miss.Snapshot(1).Moves[0].PP, Is.EqualTo(19));
+
+        move.AlwaysHits = true;
+        var hit = Session(owner, Actor(move, hp: 1000), opponent);
+        var registry = new MonsterBattleRegistry((_, _) => { });
+        registry.Start(owner, () => hit);
+        var action = Action(hit);
+        registry.Submit(owner, action);
+        Assert.Throws<InvalidOperationException>(() => registry.Submit(owner, action));
+        Assert.That(hit.Snapshot(2).Opponent.StatStages[0], Is.EqualTo(-2));
+        Assert.That(hit.Snapshot(2).Moves[0].PP, Is.EqualTo(19));
+        registry.Cancel(owner, "Disconnected.", true);
+        Assert.That(registry.HasActive(owner), Is.False);
+        var next = Session(owner, Actor(move, hp: 1000), opponent);
+        registry.Start(owner, () => next);
+        Assert.That(next.Snapshot(3).Opponent.StatStages, Is.All.Zero);
+    }
+
+    [Test]
+    public void HealingRoundsDownWithMinimumOneClampsAndReportsFullHP()
+    {
+        var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed });
+        foreach (var (method, amount, starting, expected) in new[]
+        {
+            (MonsterHealingMethod.Fixed, 20, 11L, 31L),
+            (MonsterHealingMethod.Fixed, 20, 97L, 101L),
+            (MonsterHealingMethod.Percentage, 50, 11L, 61L),
+            (MonsterHealingMethod.Percentage, 1, 100L, 101L),
+            (MonsterHealingMethod.Percentage, 100, 101L, 101L),
+        })
+        {
+            var heal = Status(new MonsterMoveEffect { Kind = MonsterMoveEffectKind.RestoreHP, HealingMethod = method, Amount = amount });
+            heal.AnimationId = Guid.NewGuid();
+            heal.AlwaysHits = false;
+            heal.Accuracy = 1;
+            var session = Session(Guid.NewGuid(), EffectActor(101, starting, 20, heal), Actor(idle));
+            Play(session);
+            var state = session.Snapshot(1);
+            Assert.That(state.Player.HP, Is.EqualTo(expected));
+            Assert.That(state.Moves[0].PP, Is.EqualTo(19));
+            var ownEvents = state.Events.Where(e => e.ActorId == state.Player.Id).ToArray();
+            Assert.That(ownEvents[0].AnimationId, Is.EqualTo(heal.AnimationId));
+            Assert.That(ownEvents[0].TargetId, Is.EqualTo(state.Player.Id));
+            Assert.That(ownEvents[1].Kind, Is.EqualTo(starting == expected ? MonsterBattleEventKind.EffectFailed : MonsterBattleEventKind.HPRecovered));
+            Assert.That(ownEvents.All(e => e.Kind != MonsterBattleEventKind.DamageApplied), Is.True);
+        }
+    }
+
+    [Test]
+    public void KnockoutBeforeHealingSpendsNoPpAndCannotRevive()
+    {
+        var heal = Status(new MonsterMoveEffect { Kind = MonsterMoveEffectKind.RestoreHP, Amount = 100 });
+        var session = Session(Guid.NewGuid(), EffectActor(101, 1, 20, heal), Actor(Move(priority: 1)));
+        Play(session);
+        var state = session.Snapshot(1);
+        Assert.That(state.Outcome, Is.EqualTo(MonsterBattleOutcome.Defeat));
+        Assert.That(state.Moves[0].PP, Is.EqualTo(20));
+        Assert.That(state.Events.Any(e => e.Kind == MonsterBattleEventKind.HPRecovered), Is.False);
+    }
+
+    [Test]
+    public void PriorityGuardReducesIncomingDamageAndDamagingEffectsRequireALandedHit()
+    {
+        long DamageWithGuard(MonsterStat stat)
+        {
+            var setup = Status(new MonsterMoveEffect { Stat = stat, Amount = 2 });
+            setup.Priority = 1;
+            var session = Session(Guid.NewGuid(), Actor(setup, hp: 500), Actor(Move(), hp: 500, speed: 30));
+            Play(session);
+            var events = session.Snapshot(1).Events;
+            Assert.That(events[1].Kind, Is.EqualTo(MonsterBattleEventKind.StatStageChanged));
+            var damage = events.Single(entry => entry.Kind == MonsterBattleEventKind.DamageApplied);
+            return damage.HPBefore - damage.HPAfter;
+        }
+
+        Assert.That(DamageWithGuard(MonsterStat.Defense), Is.LessThan(DamageWithGuard(MonsterStat.Speed)));
+        var move = Move(priority: 1);
+        move.Effects = [new() { Stat = MonsterStat.Defense, Amount = -1, Target = MonsterMoveEffectTarget.Opponent }];
+        var opponent = Actor(Move(), hp: 500);
+        var hit = Session(Guid.NewGuid(), Actor(move, hp: 500), opponent);
+        Play(hit);
+        var hitEvents = hit.Snapshot(1).Events;
+        var damageEvent = hitEvents.First(entry => entry.Kind == MonsterBattleEventKind.DamageApplied);
+        var statEvent = hitEvents.Single(entry => entry.Kind == MonsterBattleEventKind.StatStageChanged);
+        Assert.That(statEvent.Order, Is.GreaterThan(damageEvent.Order));
+        Assert.That(hit.Snapshot(2).Opponent.StatStages[1], Is.EqualTo(-1));
+
+        move.AlwaysHits = false;
+        move.Accuracy = 1;
+        var miss = Session(Guid.NewGuid(), Actor(move, hp: 500), opponent);
+        Play(miss);
+        Assert.That(miss.Snapshot(1).Opponent.StatStages[1], Is.Zero);
+        move.AlwaysHits = true;
+        var immune = Session(Guid.NewGuid(), Actor(move, hp: 500,
+            type: new MonsterTypeDescriptor(Element) { Effectiveness = new() { [Element] = 0 } }), opponent);
+        Play(immune);
+        Assert.That(immune.Snapshot(1).Opponent.StatStages[1], Is.Zero);
     }
 }

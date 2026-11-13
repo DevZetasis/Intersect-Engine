@@ -192,6 +192,7 @@ public class MonsterMoveTests
             physical.Accuracy = 95;
             physical.Priority = 1;
             physical.AnimationPosition = BattleMoveAnimationPosition.Both;
+            physical.Effects = [new() { Stat = MonsterStat.Defense, Target = MonsterMoveEffectTarget.Opponent, Amount = -2 }];
             var status = Move(typeId);
             status.Category = MonsterMoveCategory.Status;
             status.BasePower = 0;
@@ -224,6 +225,7 @@ public class MonsterMoveTests
             {
                 var loaded = db.MonsterMoves.Single(move => move.Id == physical.Id);
                 Assert.That(loaded.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Both));
+                Assert.That(loaded.Effects, Is.EqualTo(physical.Effects));
                 Assert.That((loaded.BasePower, loaded.Accuracy, loaded.Priority), Is.EqualTo((45, 95, 1)));
                 Assert.That(db.MonsterMoves.Single(move => move.Id == status.Id).BasePower, Is.Zero);
                 Assert.That(db.MonsterSpecies.Single(species => species.Id == legacyId).Learnset.Count(entry => entry.Level == 1), Is.EqualTo(2));
@@ -232,6 +234,7 @@ public class MonsterMoveTests
                 loaded.BasePower = 71;
                 loaded.Priority = -3;
                 loaded.Target = MonsterMoveTarget.AllBattlefield;
+                loaded.Effects.Clear();
                 db.SaveChanges();
             }
             using (var db = new SqliteGameContext(options))
@@ -267,6 +270,7 @@ public class MonsterMoveTests
             var loaded = db.MonsterMoves.Single();
             Assert.That(loaded.AnimationId, Is.EqualTo(animationId));
             Assert.That(loaded.AnimationPosition, Is.EqualTo(BattleMoveAnimationPosition.Target));
+            Assert.That(loaded.Effects, Is.Empty);
         });
     }
 
@@ -337,7 +341,7 @@ public class MonsterMoveTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_moves", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoves();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveAnimationPosition().TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveEffects().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -348,6 +352,10 @@ public class MonsterMoveTests
         var positionSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
             .Generate(positionMigration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(positionSql, Does.Contain("ADD `AnimationPosition` int NOT NULL DEFAULT 0"));
+        var effectsMigration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveEffects();
+        var effectsSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(effectsMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(effectsSql, Does.Contain("ADD `Effects` longtext NULL"));
     }
     private sealed class OfflineMySql(DatabaseContextOptions options) : GameContext(options)
     {

@@ -295,4 +295,42 @@ public class MonsterBattlePresentationTests
         public void Stop() => Loaded = false;
         public bool Update() => Loaded;
     }
+
+    [Test]
+    public void StageAndHealingFactsPlayInOrderAndNextAndSkipSnapCorrectly()
+    {
+        var model = new MonsterBattlePlayback();
+        var start = State(1, Guid.NewGuid(), playerHP: 45);
+        model.Accept(start);
+        var used = Event(MonsterBattleEventKind.MoveUsed, 0, true) with { TargetId = Player, AnimationId = Guid.NewGuid() };
+        var stage = Event(MonsterBattleEventKind.StatStageChanged, 1, true) with
+        {
+            TargetId = Player, Stat = MonsterStat.Defense, StageAfter = 2,
+        };
+        var heal = Event(MonsterBattleEventKind.HPRecovered, 2, true, 45, 75) with { TargetId = Player };
+        var state = State(2, Guid.NewGuid(), start.Revision, [used, stage, heal], playerHP: 75);
+        state.Player.StatStages = [0, 2, 0, 0, 0];
+        var starts = new List<MonsterBattleEventKind>();
+        model.EventStarted = entry => starts.Add(entry.Kind);
+        Assert.That(model.Accept(state), Is.True);
+        Assert.That(model.PlayerStages.Defense, Is.Zero);
+        Assert.That(model.PlayerHP, Is.EqualTo(45));
+        model.Advance();
+        Assert.That(model.PlayerStages.Defense, Is.EqualTo(2));
+        model.Advance();
+        model.Tick(.25);
+        Assert.That(model.PlayerHP, Is.EqualTo(60).Within(.001));
+        Assert.That(model.Accept(state), Is.False);
+        model.Advance();
+        Assert.That(model.PlayerHP, Is.EqualTo(75));
+        Assert.That(starts, Is.EqualTo(new[] { MonsterBattleEventKind.MoveUsed, MonsterBattleEventKind.StatStageChanged, MonsterBattleEventKind.HPRecovered }));
+
+        var second = State(3, Guid.NewGuid(), state.Revision, [used, heal with { Order = 1, HPBefore = 75, HPAfter = 90 }], playerHP: 90);
+        second.Player.StatStages = state.Player.StatStages;
+        model.Accept(second);
+        model.Skip();
+        Assert.That(model.PlayerHP, Is.EqualTo(90));
+        Assert.That(model.PlayerStages.Defense, Is.EqualTo(2));
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+    }
 }

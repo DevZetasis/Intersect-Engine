@@ -458,6 +458,10 @@ namespace Intersect.Server.Migrations.MySql.Game
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("EffectsJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Effects");
+
                     b.Property<int>("Category")
                         .HasColumnType("int");
 

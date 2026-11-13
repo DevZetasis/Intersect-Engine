@@ -9,6 +9,7 @@ using Intersect.Client.General;
 using Intersect.Client.Localization;
 using Intersect.Framework.Core.GameObjects.Animations;
 using Intersect.Network.Packets.Client;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Network.Packets.Server;
 using ClientNetwork = Intersect.Client.Networking.Network;
 
@@ -97,7 +98,7 @@ public sealed class MonsterBattleWindow : Window
         _playback.EffectDuration = entry => entry.Kind switch
         {
             MonsterBattleEventKind.MoveUsed => _animation.Duration,
-            MonsterBattleEventKind.DamageApplied => .5,
+            MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered => .5,
             MonsterBattleEventKind.MonsterFainted => .55,
             _ => .45,
         };
@@ -254,14 +255,24 @@ public sealed class MonsterBattleWindow : Window
         _playerArt = _opponentArt = null;
     }
     private static string Short(string text, int limit) => text.Length <= limit ? text : text[..Math.Max(1, limit - 3)] + "...";
+    private static string StageSummary(MonsterStatValues stages)
+    {
+        var labels = new[] { ("Atk", stages.Attack), ("Def", stages.Defense),
+            ("SpA", stages.SpecialAttack), ("SpD", stages.SpecialDefense), ("Spe", stages.Speed) };
+        return string.Join("  ", labels.Where(stage => stage.Item2 != 0)
+            .Select(stage => $"{stage.Item1} {stage.Item2:+0;-0}"));
+    }
+
     private void RefreshControls()
     {
         if (_playback.State is not { } state) return;
         var player = _playback.DisplayedPlayer ?? state.Player;
         LoadPlayerArt();
         _playerName.Text = Strings.MonsterBattle.Actor.ToString(Short(player.Name, 60), player.Level);
-        _playerName.SetToolTipText(player.Name);
-        _opponentName.Text = Strings.MonsterBattle.Actor.ToString(Short(state.Opponent.Name, 60), state.Opponent.Level); _opponentName.SetToolTipText(state.Opponent.Name);
+        var playerStages = StageSummary(_playback.PlayerStages);
+        var opponentStages = StageSummary(_playback.OpponentStages);
+        _playerName.SetToolTipText(playerStages.Length == 0 ? player.Name : $"{player.Name} — {playerStages}");
+        _opponentName.Text = Strings.MonsterBattle.Actor.ToString(Short(state.Opponent.Name, 60), state.Opponent.Level); _opponentName.SetToolTipText(opponentStages.Length == 0 ? state.Opponent.Name : $"{state.Opponent.Name} — {opponentStages}");
         HP(_playerHP, _playerHPValue, _playback.PlayerHP, player.MaximumHP);
         HP(_opponentHP, _opponentHPValue, _playback.OpponentHP, state.Opponent.MaximumHP);
         var playing = _playback.Phase == MonsterBattlePresentationPhase.PlayingSequence;
@@ -274,6 +285,11 @@ public sealed class MonsterBattleWindow : Window
             MonsterBattlePresentationPhase.Replacement => state.IsCorrection ? Short(_playback.Text, 220) : Strings.MonsterBattle.Replacement,
             _ => Short(_playback.Text, 220),
         };
+        if (CanCommand && (playerStages.Length > 0 || opponentStages.Length > 0))
+        {
+            if (playerStages.Length > 0) _status.Text += $"\n{Short(player.Name, 20)}  {playerStages}";
+            if (opponentStages.Length > 0) _status.Text += $"\n{Short(state.Opponent.Name, 20)}  {opponentStages}";
+        }
         _status.SetToolTipText(_playback.Text);
         LayoutMenus();
         _mainMenu.IsHidden = !CanCommand || _inFight || _inParty;

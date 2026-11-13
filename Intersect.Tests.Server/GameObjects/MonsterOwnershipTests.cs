@@ -333,6 +333,6 @@ public class MonsterOwnershipTests
         var move = new MoveOwnedMonsterPacket { MonsterId = monster.Id, ExpectedRevision = monster.Revision, Destination = MonsterLocation.Storage };
         Assert.That(MessagePacker.Instance.Deserialize<MoveOwnedMonsterPacket>(MessagePacker.Instance.Serialize(move))!.ExpectedRevision, Is.EqualTo(monster.Revision));
         Assert.That(MessagePacker.Instance.Deserialize<RequestOwnedMonstersPacket>(MessagePacker.Instance.Serialize(new RequestOwnedMonstersPacket())), Is.Not.Null);
-        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v5"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v6"));
     }
 }
