@@ -411,4 +411,32 @@ public sealed class MonsterConditionTests
         Assert.That(Load(id).CurrentHP, Is.EqualTo(committed.CurrentHP));
         Assert.That(Load(id).Revision, Is.EqualTo(committed.Revision));
     }
+
+    [Test]
+    public void PersistentStatusCommitsWithResourcesSurvivesReloadAndCanBeCuredAlone()
+    {
+        var status = new MonsterStatusDescriptor(Guid.NewGuid()) { Name = "Persistent", PersistOutsideBattle = true };
+        MonsterStatusDescriptor.Lookup.Set(status.Id, status);
+        try
+        {
+            var id = Grant();
+            Spend(id);
+            var before = Load(id);
+            var service = Service();
+            service.CommitBattle(_owner, [new(id, before.Revision, before.CurrentHP, before.MaximumHPAtLastUpdate,
+                before.MovePP.ToArray(), status.Id, 3)]);
+            var loaded = Service().GetForBattle(_owner, id);
+            Assert.That(loaded.StatusId, Is.EqualTo(status.Id));
+            Assert.That(loaded.StatusTurns, Is.EqualTo(3));
+            service.Move(_owner, id, loaded.Revision, MonsterLocation.Storage);
+            Assert.That(Load(id).StatusId, Is.EqualTo(status.Id));
+            service.Heal(_owner, id, MonsterHealingScope.AllOwned, MonsterRecovery.Status);
+            var cured = Load(id);
+            Assert.That(cured.StatusId, Is.Null);
+            Assert.That(cured.StatusTurns, Is.Null);
+            Assert.That(cured.CurrentHP, Is.EqualTo(before.CurrentHP));
+            Assert.That(cured.MovePP, Is.EqualTo(before.MovePP));
+        }
+        finally { MonsterStatusDescriptor.Lookup.DeleteAt(status.Id); }
+    }
 }

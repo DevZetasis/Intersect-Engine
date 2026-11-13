@@ -44,6 +44,7 @@ public interface IGameContext : IDbContext
     DbSet<MonsterMoveDescriptor> MonsterMoves { get; set; }
 
     DbSet<MonsterNatureDescriptor> MonsterNatures { get; set; }
+    DbSet<MonsterStatusDescriptor> MonsterStatuses { get; set; }
 
     DbSet<ProjectileDescriptor> Projectiles { get; set; }
 

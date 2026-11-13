@@ -1,3 +1,4 @@
+using Intersect.Server.Monsters.Battles;
 using Microsoft.EntityFrameworkCore;
 using Intersect.Server.Monsters;
 using Intersect.Core;
@@ -823,7 +824,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -886,7 +887,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.Animation)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -910,9 +911,10 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Animation:
                     using (var gameDb = DbInterface.CreateGameContext())
                     {
-                        if (gameDb.MonsterMoves.Any(move => move.AnimationId == id))
+                        if (gameDb.MonsterMoves.Any(move => move.AnimationId == id) ||
+                            gameDb.MonsterStatuses.Any(status => status.AppliedAnimationId == id || status.ActivationAnimationId == id || status.RemovedAnimationId == id))
                         {
-                            PacketSender.SendError(client, "This animation is referenced by monster moves.", "Monster Move");
+                            PacketSender.SendError(client, "This animation is referenced by monster moves or statuses.", "Monster Move");
                             return;
                         }
                     }
@@ -935,6 +937,20 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterStatus:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    using (var playerDb = DbInterface.CreatePlayerContext())
+                    {
+                        if (playerDb.OwnedMonsters.Any(monster => monster.StatusId == id) ||
+                            MonsterPracticeBattles.Registry.ReservesStatus(id) ||
+                            gameDb.MonsterMoves.AsNoTracking().AsEnumerable().Any(move => move.Effects.Any(effect => effect.StatusId == id)))
+                        {
+                            PacketSender.SendError(client, "This status is referenced by a move, owned monster or active battle.", "Monster Status");
+                            return;
+                        }
+                    }
+                    obj = MonsterStatusDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterNature:
                     if (MonsterNatureReferences.IsAssigned(id, () => DbInterface.CreatePlayerContext()))
@@ -1085,7 +1101,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1117,6 +1133,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterStatus:
+                    obj = MonsterStatusDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterNature:
                     obj = MonsterNatureDescriptor.Get(id);
@@ -1231,7 +1250,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor)
                     {
                         try
                         {
@@ -1248,12 +1267,21 @@ internal sealed partial class NetworkedPacketHandler
                                 candidate.Load(packet.Data);
                                 MonsterNatureRules.Validate(candidate);
                             }
+                            else if (obj is MonsterStatusDescriptor)
+                            {
+                                var candidate = new MonsterStatusDescriptor(id);
+                                candidate.Load(packet.Data);
+                                if (!candidate.IsValid || candidate.AnimationReferences().Any(animation => AnimationDescriptor.Get(animation) == null))
+                                    throw new InvalidOperationException("Invalid monster status settings or animation.");
+                            }
                             else if (obj is MonsterMoveDescriptor)
                             {
                                 var candidate = new MonsterMoveDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterMoveRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null,
                                     animationId => AnimationDescriptor.Get(animationId) != null);
+                                if (candidate.Effects.Any(effect => effect.StatusId is { } status && MonsterStatusDescriptor.Get(status) == null))
+                                    throw new InvalidOperationException("A move effect references an unavailable status.");
                             }
                             else
                             {

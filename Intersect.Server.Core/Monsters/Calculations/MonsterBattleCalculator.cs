@@ -11,6 +11,10 @@ public sealed record MonsterBattleModifiers
     public int DefenseStage { get; init; }
     public int SpecialAttackStage { get; init; }
     public int SpecialDefenseStage { get; init; }
+    public int AttackPercent { get; init; } = 100;
+    public int DefensePercent { get; init; } = 100;
+    public int SpecialAttackPercent { get; init; } = 100;
+    public int SpecialDefensePercent { get; init; } = 100;
     // Ordered, caller-supplied extension points; no burn/weather/item/ability systems are implemented.
     public IReadOnlyList<decimal> BeforeAddTwo { get; init; } = Array.Empty<decimal>();
     public IReadOnlyList<decimal> AfterCritical { get; init; } = Array.Empty<decimal>();
@@ -32,6 +36,9 @@ public static class MonsterBattleCalculator
         var result = stage >= 0 ? (BigInteger)stat * (2 + stage) / 2 : (BigInteger)stat * 2 / (2 - stage);
         return Math.Max(1, MonsterExactMath.Result(result));
     }
+    internal static long ApplyStatPercent(long stat, int percent) =>
+        Math.Max(1, MonsterExactMath.Result((BigInteger)stat * percent / 100));
+
     public static int AccuracyThreshold(MonsterMoveDescriptor move, int accuracyStage, int evasionStage)
     {
         ArgumentNullException.ThrowIfNull(move);
@@ -80,6 +87,8 @@ public static class MonsterBattleCalculator
         if (critical) { attackStage = Math.Max(0, attackStage); defenseStage = Math.Min(0, defenseStage); }
         var attack = ApplyStatStage(physical ? attacker.Stats.Attack : attacker.Stats.SpecialAttack, attackStage);
         var defense = ApplyStatStage(physical ? defender.Stats.Defense : defender.Stats.SpecialDefense, defenseStage);
+        attack = ApplyStatPercent(attack, physical ? modifiers.AttackPercent : modifiers.SpecialAttackPercent);
+        defense = ApplyStatPercent(defense, physical ? modifiers.DefensePercent : modifiers.SpecialDefensePercent);
         BigInteger damage = ((2 * (BigInteger)attacker.Level / 5 + 2) * move.BasePower * attack) / 50 / defense;
         foreach (var factor in modifiers.BeforeAddTwo) damage = MonsterExactMath.Multiply(damage, factor);
         damage += 2;

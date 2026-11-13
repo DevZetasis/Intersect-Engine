@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace Intersect.Framework.Core.GameObjects.Monsters;
 
-public enum MonsterMoveEffectKind { StatStage = 0, RestoreHP = 1 }
+public enum MonsterMoveEffectKind { StatStage = 0, RestoreHP = 1, ApplyStatus = 2, CureStatus = 3 }
 public enum MonsterMoveEffectTarget { Self = 0, Opponent = 1 }
 public enum MonsterHealingMethod { Fixed = 0, Percentage = 1 }
 
@@ -13,6 +13,8 @@ public sealed record MonsterMoveEffect
     public MonsterMoveEffectTarget Target { get; init; }
     public MonsterStat Stat { get; init; } = MonsterStat.Attack;
     public MonsterHealingMethod HealingMethod { get; init; }
+    public Guid? StatusId { get; init; }
+    public int Chance { get; init; } = 100;
     public int Amount { get; init; } = 1;
 
     public static bool SupportsStage(MonsterStat stat) => stat is >= MonsterStat.Attack and <= MonsterStat.Speed;
@@ -28,6 +30,8 @@ public sealed record MonsterMoveEffect
             MonsterHealingMethod.Percentage => Amount is >= 1 and <= 100,
             _ => false,
         },
+        MonsterMoveEffectKind.ApplyStatus => Enum.IsDefined(Target) && StatusId is { } id && id != Guid.Empty && Chance is >= 1 and <= 100,
+        MonsterMoveEffectKind.CureStatus => Target == MonsterMoveEffectTarget.Self && StatusId != Guid.Empty,
         _ => false,
     };
 }

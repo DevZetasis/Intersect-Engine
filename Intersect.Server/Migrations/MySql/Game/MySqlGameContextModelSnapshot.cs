@@ -562,6 +562,91 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.ToTable("MonsterNatures");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterStatusDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("longtext")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Group")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Duration")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumTurns")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaximumTurns")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RecoveryChance")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PreventActionChance")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Damage")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttackPercent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefensePercent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SpecialAttackPercent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SpecialDefensePercent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SpeedPercent")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("PersistOutsideBattle")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("RemoveWhenSwitching")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("DamageAmount")
+                        .HasPrecision(14, 4)
+                        .HasColumnType("decimal(14,4)");
+
+                    b.Property<Guid?>("AppliedAnimationId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<Guid?>("ActivationAnimationId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<Guid?>("RemovedAnimationId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("PreventActionMessage")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterStatuses");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterTypeDescriptor", b =>
                 {
                     b.Property<Guid>("Id")

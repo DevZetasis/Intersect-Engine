@@ -25,6 +25,7 @@ public sealed class MonsterBattleActorView
     [Key(6)] public string FrontBattleSprite { get; set; } = string.Empty;
     [Key(7)] public string BackBattleSprite { get; set; } = string.Empty;
     [Key(8)] public int[] StatStages { get; set; } = [];
+    [Key(9)] public string StatusName { get; set; } = "";
 }
 
 [MessagePackObject]

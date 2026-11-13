@@ -15,6 +15,9 @@ public static class MonsterDiagnostics
             $"Level: {monster.Level}; Experience: {monster.Experience}",
             $"Placement: {monster.Location} #{monster.Slot + 1}",
             monster.NatureId == null ? "Nature: neutral/unassigned" : $"Nature: {nature?.Name ?? "Missing definition"} ({monster.NatureId})",
+            monster.StatusId is { } statusId
+                ? $"Status: {MonsterStatusDescriptor.Get(statusId)?.Name ?? "Unavailable"} ({statusId}), turns: {monster.StatusTurns?.ToString() ?? "indefinite"}"
+                : "Status: None",
             "Order: HP / Attack / Defense / Special Attack / Special Defense / Speed",
             "Move slots: " + (monster.MovesInitialized ? string.Join(" / ", monster.MoveIds.Select(id => id?.ToString() ?? "Empty")) : "Pending one-time learnset initialization"),
             monster.ConditionInitialized ? $"Current HP: {monster.CurrentHP}; Maximum HP: {monster.MaximumHPAtLastUpdate}; Fainted: {monster.CurrentHP == 0}" : "HP/PP pending one-time definition initialization",

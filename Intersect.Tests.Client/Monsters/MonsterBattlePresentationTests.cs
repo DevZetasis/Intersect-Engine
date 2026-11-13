@@ -333,4 +333,28 @@ public class MonsterBattlePresentationTests
         Assert.That(model.PlayerStages.Defense, Is.EqualTo(2));
         Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
     }
+
+    [Test]
+    public void StatusEventsAnimateAndReplayOnlyAuthoritativeHpAndLabels()
+    {
+        var (model, start) = Ready();
+        var started = new List<MonsterBattleEventKind>();
+        model.EventStarted = entry => started.Add(entry.Kind);
+        var application = Event(MonsterBattleEventKind.StatusApplied, 0, false) with { StatusName = "Custom", AnimationId = Guid.NewGuid() };
+        var tick = Event(MonsterBattleEventKind.StatusDamage, 1, false, 100, 88) with { StatusName = "Custom", AnimationId = Guid.NewGuid() };
+        var cure = Event(MonsterBattleEventKind.StatusRemoved, 2, false);
+        var state = State(2, Guid.NewGuid(), start.Revision, [application, tick, cure], playerHP: 88);
+        Assert.That(model.Accept(state), Is.True);
+        Assert.That(model.PlayerStatus, Is.EqualTo("Custom"));
+        model.Advance();
+        model.Tick(.25);
+        Assert.That(model.PlayerHP, Is.EqualTo(94).Within(.01));
+        Assert.That(model.Accept(state), Is.False);
+        model.Advance();
+        Assert.That(model.PlayerHP, Is.EqualTo(88));
+        Assert.That(model.PlayerStatus, Is.Empty);
+        model.Skip();
+        Assert.That(started, Is.EqualTo(new[] { MonsterBattleEventKind.StatusApplied, MonsterBattleEventKind.StatusDamage, MonsterBattleEventKind.StatusRemoved }));
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
+    }
 }

@@ -113,6 +113,11 @@ public static partial class DbInterface
     private static GameContext ConfigureMonsterReferences(GameContext context)
     {
         context.MoveReferenceExists = id => Intersect.Server.Monsters.MonsterMoveAssignment.IsAssigned(id, () => CreatePlayerContext());
+        context.StatusReferenceExists = id =>
+        {
+            using var players = CreatePlayerContext();
+            return players.OwnedMonsters.Any(monster => monster.StatusId == id);
+        };
         context.NatureReferenceExists = id => Intersect.Server.Monsters.MonsterNatureReferences.IsAssigned(id, () => CreatePlayerContext());
         return context;
     }
@@ -735,6 +740,9 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 MonsterTypeDescriptor.Lookup.Clear();
                 break;
+            case GameObjectType.MonsterStatus:
+                MonsterStatusDescriptor.Lookup.Clear();
+                break;
             case GameObjectType.MonsterNature:
                 MonsterNatureDescriptor.Lookup.Clear();
                 break;
@@ -853,6 +861,9 @@ public static partial class DbInterface
                         {
                             MonsterTypeDescriptor.Lookup.Set(monsterType.Id, monsterType);
                         }
+                        break;
+                    case GameObjectType.MonsterStatus:
+                        foreach (var status in context.MonsterStatuses) MonsterStatusDescriptor.Lookup.Set(status.Id, status);
                         break;
                     case GameObjectType.MonsterNature:
                         foreach (var nature in context.MonsterNatures)
@@ -1163,6 +1174,9 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 dbObj = new MonsterTypeDescriptor(predefinedid);
                 break;
+            case GameObjectType.MonsterStatus:
+                dbObj = new MonsterStatusDescriptor(predefinedid);
+                break;
             case GameObjectType.MonsterNature:
                 dbObj = new MonsterNatureDescriptor(predefinedid);
                 break;
@@ -1284,6 +1298,10 @@ public static partial class DbInterface
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Add((MonsterTypeDescriptor)dbObj);
                         MonsterTypeDescriptor.Lookup.Set(dbObj.Id, dbObj);
+                        break;
+                    case GameObjectType.MonsterStatus:
+                        context.MonsterStatuses.Add((MonsterStatusDescriptor)dbObj);
+                        MonsterStatusDescriptor.Lookup.Set(dbObj.Id, dbObj);
                         break;
                     case GameObjectType.MonsterNature:
                         context.MonsterNatures.Add((MonsterNatureDescriptor)dbObj);
@@ -1410,7 +1428,7 @@ public static partial class DbInterface
 
     public static void DeleteGameObject(IDatabaseObject gameObject)
     {
-        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor)
+        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor)
         {
             lock (Intersect.Server.Monsters.MonsterTypeRules.ContentGate) DeleteGameObjectCore(gameObject);
         }
@@ -1447,6 +1465,9 @@ public static partial class DbInterface
                                 context.MonsterSpecies.AsNoTracking().ToArray(), context.MonsterTypes.AsNoTracking().ToArray(), context.MonsterMoves.AsNoTracking().ToArray()))
                             throw new InvalidOperationException("This monster type is referenced and cannot be deleted.");
                         context.MonsterTypes.Remove((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterStatus:
+                        context.MonsterStatuses.Remove((MonsterStatusDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterNature:
                         Intersect.Server.Monsters.MonsterNatureReferences.EnsureUnreferenced(gameObject.Id, () => CreatePlayerContext());
@@ -1634,6 +1655,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Update((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterStatus:
+                        context.MonsterStatuses.Update((MonsterStatusDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterNature:
                         context.MonsterNatures.Update((MonsterNatureDescriptor)gameObject);

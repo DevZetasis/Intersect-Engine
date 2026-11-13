@@ -12,6 +12,7 @@ public static class MonsterRosterDetails
     {
         var details = new OwnedMonsterDetails
         {
+            StatusName = monster.StatusId is { } statusId ? MonsterStatusDescriptor.Get(statusId)?.Name ?? "" : "",
             ConditionInitialized = monster.ConditionInitialized, CurrentHP = monster.CurrentHP, MaximumHP = monster.MaximumHPAtLastUpdate,
             Moves = monster.MovePP.Select((p, slot) => new OwnedMonsterMovePP { Slot = slot, MoveId = p.MoveId,
                 Name = p.MoveId is { } id ? MonsterMoveDescriptor.Get(id)?.Name ?? "Missing move" : "Empty slot", CurrentPP = p.Current, MaximumPP = p.Maximum }).ToArray(),

@@ -12,16 +12,19 @@ public sealed partial class MonsterOwnershipService
     private void EnsureUnreserved(Guid monster) { if (_reserved(monster)) throw new InvalidOperationException("Finish the monster battle before changing or healing this monster."); }
     private bool ReconcileCondition(MonsterInstance monster)
     {
+        var cleared = monster.StatusId is { } id &&
+            MonsterStatusDescriptor.Get(id) is not { IsValid: true, PersistOutsideBattle: true };
+        if (cleared) monster.SetStatus(null, null, Guid.NewGuid());
         var species = _species(monster.SpeciesId);
-        if (species == null) return false; // Missing legacy content must not fabricate a heal or maximum.
-        var nature = monster.NatureId is { } id ? _natures().SingleOrDefault(n => n.Id == id) : null;
-        if (monster.NatureId != null && nature == null) return false;
+        if (species == null) return cleared; // Missing legacy content must not fabricate a heal or maximum.
+        var nature = monster.NatureId is { } natureId ? _natures().SingleOrDefault(n => n.Id == natureId) : null;
+        if (monster.NatureId != null && nature == null) return cleared;
         var maximum = MonsterStatCalculator.Calculate(species.BaseStats, monster.Level, monster.IVs, monster.EVs, nature, _rules).HP;
-        return monster.ReconcileCondition(maximum, monster.MoveIds.Select(id => id is { } value ? _move(value) : null).ToArray());
+        return monster.ReconcileCondition(maximum, monster.MoveIds.Select(id => id is { } value ? _move(value) : null).ToArray()) || cleared;
     }
     public int Heal(Guid owner, Guid? monsterId, MonsterHealingScope scope, MonsterRecovery recovery)
     {
-        if (owner == Guid.Empty || !Enum.IsDefined(scope) || recovery is not (MonsterRecovery.HP or MonsterRecovery.PP or MonsterRecovery.Both)) throw new InvalidOperationException("Invalid healing request.");
+        if (owner == Guid.Empty || !Enum.IsDefined(scope) || recovery == 0 || (recovery & ~MonsterRecovery.All) != 0) throw new InvalidOperationException("Invalid healing request.");
         lock (MonsterTypeRules.ContentGate)
         lock (Gate(owner))
         {
@@ -34,6 +37,9 @@ public sealed partial class MonsterOwnershipService
             foreach (var m in monsters) EnsureUnreserved(m.Id);
             foreach (var m in monsters)
             {
+                if (recovery.HasFlag(MonsterRecovery.Status))
+                    m.SetStatus(null, null, Guid.NewGuid());
+                if ((recovery & MonsterRecovery.Both) == 0) continue;
                 if (!m.MovesInitialized) m.InitializeMoves(MonsterMoveAssignment.Initial(_species(m.SpeciesId), m.Level, _moveExists));
                 ReconcileCondition(m);
                 if (!m.ConditionInitialized || m.MovePP.Any(p => p.MoveId != null && p.Maximum == 0)) throw new InvalidOperationException("Referenced species, nature or move definition is unavailable.");
@@ -45,7 +51,7 @@ public sealed partial class MonsterOwnershipService
             return monsters.Length;
         }
     }
-    internal sealed record BattleCondition(Guid Id, Guid ExpectedRevision, long HP, long MaximumHP, MonsterMovePP[] PP);
+    internal sealed record BattleCondition(Guid Id, Guid ExpectedRevision, long HP, long MaximumHP, MonsterMovePP[] PP, Guid? StatusId = null, int? StatusTurns = null);
 
     internal Guid CommitBattle(Guid owner, Guid monsterId, Guid expectedRevision, long hp, long maximum, MonsterMovePP[] pp) =>
         CommitBattle(owner, [new BattleCondition(monsterId, expectedRevision, hp, maximum, pp)]);
@@ -70,6 +76,7 @@ public sealed partial class MonsterOwnershipService
                     if (!monsters.TryGetValue(change.Id, out var monster) || monster.Revision != change.ExpectedRevision)
                         throw new InvalidOperationException("Owned battle monster changed or is no longer in the party.");
                     monster.SetCondition(change.HP, change.MaximumHP, change.PP, token);
+                    monster.SetStatus(change.StatusId, change.StatusTurns, token);
                 }
                 // EF commits all tracked updates in one transaction, including concurrency checks.
                 if (db.SaveChanges() <= 0) throw new InvalidOperationException("Turn condition was not committed.");
@@ -83,6 +90,7 @@ public sealed partial class MonsterOwnershipService
                     .ToDictionary(m => m.Id);
                 if (changes.All(change => saved.TryGetValue(change.Id, out var monster) && monster.Revision == token &&
                     monster.CurrentHP == change.HP && monster.MaximumHPAtLastUpdate == change.MaximumHP &&
+                    monster.StatusId == change.StatusId && monster.StatusTurns == change.StatusTurns &&
                     monster.MovePP.SequenceEqual(change.PP))) return token;
                 throw;
             }

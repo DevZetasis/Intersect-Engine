@@ -13,18 +13,24 @@ internal sealed class HealMonsterCommand : ServerCommand
 {
     public HealMonsterCommand() : base(Strings.Commands.HealMonster,
         new VariableArgument<string>(new LocaleArgument { Name = "monster", Description = "Individual monster UUID" }, RequiredIfNotHelp, true),
-        new VariableArgument<string>(new LocaleArgument { Name = "resource", Description = "hp, pp or all" }, RequiredIfNotHelp, true)) { }
+        new VariableArgument<string>(new LocaleArgument { Name = "resource", Description = "hp, pp, status or all" }, RequiredIfNotHelp, true)) { }
     protected override void HandleValue(ServerContext context, ParserResult result)
     {
         var mode = result.Find(FindArgument<VariableArgument<string>>(1))?.ToLowerInvariant();
-        if (!Guid.TryParse(result.Find(FindArgument<VariableArgument<string>>(0)), out var id) || mode is not ("hp" or "pp" or "all"))
-        { Console.WriteLine("Usage: healmonster <individual-monster-UUID> <hp|pp|all>"); return; }
+        if (!Guid.TryParse(result.Find(FindArgument<VariableArgument<string>>(0)), out var id) || mode is not ("hp" or "pp" or "status" or "all"))
+        { Console.WriteLine("Usage: healmonster <individual-monster-UUID> <hp|pp|status|all>"); return; }
         try
         {
             using var db = DbInterface.CreatePlayerContext();
             var owner = db.OwnedMonsters.AsNoTracking().Where(m => m.Id == id).Select(m => m.OwnerPlayerId).SingleOrDefault();
             if (owner == Guid.Empty) throw new InvalidOperationException("Monster was not found.");
-            new MonsterHealingService(MonsterRoster.CreateService(context.Logger)).HealOne(owner, id, mode == "hp" ? MonsterRecovery.HP : mode == "pp" ? MonsterRecovery.PP : MonsterRecovery.Both);
+            new MonsterHealingService(MonsterRoster.CreateService(context.Logger)).HealOne(owner, id, mode switch
+            {
+                "hp" => MonsterRecovery.HP,
+                "pp" => MonsterRecovery.PP,
+                "status" => MonsterRecovery.Status,
+                _ => MonsterRecovery.All,
+            });
             if (Player.FindOnline(owner) is { } player) MonsterRoster.Send(player);
             Console.WriteLine($"Healed {mode} for monster {id}.");
         }

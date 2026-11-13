@@ -343,8 +343,29 @@ public class MonsterRosterLayoutTests
                 Assert.That(playback.OpponentHP, Is.EqualTo(30));
                 playback.Tick(.1);
                 Assert.That(playback.OpponentHP, Is.LessThan(30));
-                AnimationDescriptor.Lookup.DeleteAt(authored.Id);
-                ClickBattle("SkipButton"); Assert.That(sent.Count, Is.EqualTo(1));
+                ClickBattle("SkipButton");
+                var conditionTurn = BattleState(7, 3, MonsterBattleOutcome.Victory);
+                conditionTurn.BattleId = animated.BattleId;
+                conditionTurn.PreviousRevision = animated.Revision;
+                conditionTurn.Opponent.Id = animated.Opponent.Id;
+                conditionTurn.Opponent.HP = 0;
+                conditionTurn.Player.HP = 19;
+                conditionTurn.Player.StatusName = "Sick";
+                conditionTurn.Events = [
+                    new() { Kind = MonsterBattleEventKind.StatusApplied, ActorId = first.Id, TargetId = first.Id,
+                        StatusName = "Sick", AnimationId = authored.Id, Text = "Sick applied" },
+                    new() { Kind = MonsterBattleEventKind.StatusDamage, Order = 1, ActorId = first.Id, TargetId = first.Id,
+                        HPBefore = 25, HPAfter = 19, StatusName = "Sick", AnimationId = authored.Id, Text = "Status damage" },
+                ];
+                applyBattle.Invoke(packetHandler, [null, conditionTurn]); battleWindow.Update();
+                Assert.That(effect.IsHidden, Is.False);
+                Assert.That(BattleLabel("PlayerHPValue").Text, Does.Contain("[Sick]"));
+                ClickBattle("AdvanceButton");
+                Assert.That(effect.IsHidden, Is.False);
+                ClickBattle("SkipButton");
+                Assert.That(effect.IsHidden, Is.True);
+                Assert.That(BattleLabel("PlayerHPValue").Text, Does.Contain("HP 19 / 50"));
+                AnimationDescriptor.Lookup.DeleteAt(authored.Id); Assert.That(sent.Count, Is.EqualTo(1));
                 Assert.That(((ProgressBar)BattleLabel("OpponentHP")).Value, Is.Zero); Assert.That(enemySprite.IsHidden, Is.True);
                 Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);
                 var forfeitState = BattleState(8, 1); forfeitState.BattleId = Guid.NewGuid(); applyBattle.Invoke(packetHandler, [null, forfeitState]); battleWindow.Update();

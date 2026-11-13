@@ -341,7 +341,7 @@ public class MonsterMoveTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_moves", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoves();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterMoveEffects().TargetModel, designTime: true);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterStatuses().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -357,6 +357,45 @@ public class MonsterMoveTests
             .Generate(effectsMigration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(effectsSql, Does.Contain("ADD `Effects` longtext NULL"));
     }
+    [Test]
+    public void StatusDefinitionAndReferencesSurviveMigrationAndProtectDeletion()
+    {
+        WithDatabase(options =>
+        {
+            var status = new MonsterStatusDescriptor(Guid.NewGuid())
+            {
+                Name = "Example", Damage = MonsterStatusDamage.Percent, DamageAmount = 12.5m,
+                PersistOutsideBattle = true,
+            };
+            using (var db = new SqliteGameContext(options))
+            {
+                db.GetService<IMigrator>().Migrate("20261110000200_AddMonsterMoveEffects");
+                db.Database.Migrate();
+                Assert.That(db.Database.HasPendingModelChanges(), Is.False);
+                var type = new MonsterTypeDescriptor(Guid.NewGuid());
+                var move = Move(type.Id);
+                move.Effects = [new() { Kind = MonsterMoveEffectKind.ApplyStatus, StatusId = status.Id }];
+                db.AddRange(type, status, move);
+                db.SaveChanges();
+            }
+            using (var db = new SqliteGameContext(options))
+            {
+                var loaded = db.MonsterStatuses.Single();
+                Assert.That(loaded.Id, Is.EqualTo(status.Id));
+                Assert.That(loaded.DamageAmount, Is.EqualTo(12.5m));
+                Assert.That(loaded.PersistOutsideBattle, Is.True);
+                db.MonsterStatuses.Remove(loaded);
+                Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+                db.MonsterMoves.Single().Effects.Clear();
+                db.StatusReferenceExists = id => id == status.Id;
+                Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+                db.StatusReferenceExists = null;
+                db.SaveChanges();
+                Assert.That(db.MonsterStatuses, Is.Empty);
+            }
+        });
+    }
+
     private sealed class OfflineMySql(DatabaseContextOptions options) : GameContext(options)
     {
         public override DatabaseType DatabaseType => DatabaseType.MySql;

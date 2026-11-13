@@ -208,4 +208,39 @@ public class MonsterMoveEditorTests
             Handler.GameObjectUpdatedDelegate = null!;
         }
     }
+
+    [Test]
+    public void StatusEditorCopiesSettingsWithoutChangingIdentityAndUndoRestoresDraft()
+    {
+        var a = new MonsterStatusDescriptor(Guid.NewGuid()) { Name = "Source", PersistOutsideBattle = true, Damage = MonsterStatusDamage.Percent, DamageAmount = 12.5m };
+        var b = new MonsterStatusDescriptor(Guid.NewGuid()) { Name = "Destination", RemoveWhenSwitching = true };
+        MonsterStatusDescriptor.Lookup.Set(a.Id, a);
+        MonsterStatusDescriptor.Lookup.Set(b.Id, b);
+        try
+        {
+            using var editor = new FrmMonsterStatus();
+            editor.InitEditor();
+            Invoke(editor, "SelectStatus", a.Id);
+            Field<TextBox>(editor, "_name").Text = "Edited";
+            Invoke(editor, "CopyStatus", null, EventArgs.Empty);
+            Invoke(editor, "SelectStatus", b.Id);
+            Invoke(editor, "PasteStatus", null, EventArgs.Empty);
+            var draft = Field<MonsterStatusDescriptor>(editor, "_selected");
+            Assert.That(draft.Id, Is.EqualTo(b.Id));
+            Assert.That(draft.PersistOutsideBattle, Is.True);
+            Assert.That(draft.DamageAmount, Is.EqualTo(12.5m));
+            Assert.That(draft.Name, Is.EqualTo("Edited"));
+            Invoke(editor, "UndoStatus", null, EventArgs.Empty);
+            Assert.That(draft.JsonData, Is.EqualTo(b.JsonData));
+            editor.Close();
+            Assert.That(a.Name, Is.EqualTo("Source"));
+            Assert.That(b.Name, Is.EqualTo("Destination"));
+        }
+        finally
+        {
+            MonsterStatusDescriptor.Lookup.DeleteAt(a.Id);
+            MonsterStatusDescriptor.Lookup.DeleteAt(b.Id);
+            Handler.GameObjectUpdatedDelegate = null!;
+        }
+    }
 }

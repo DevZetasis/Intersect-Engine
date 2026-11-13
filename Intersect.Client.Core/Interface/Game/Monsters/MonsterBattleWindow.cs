@@ -97,7 +97,9 @@ public sealed class MonsterBattleWindow : Window
         _experience = Text(_playerInfo, "BattleExperienceLabel", 20); _experience.Dock = Pos.Top; _experience.Text = Strings.MonsterBattle.Experience;
         _playback.EffectDuration = entry => entry.Kind switch
         {
-            MonsterBattleEventKind.MoveUsed => _animation.Duration,
+            MonsterBattleEventKind.MoveUsed or MonsterBattleEventKind.StatusApplied or
+                MonsterBattleEventKind.StatusRemoved or MonsterBattleEventKind.StatusBlocked => _animation.Duration,
+            MonsterBattleEventKind.StatusDamage => Math.Max(.5, _animation.Duration),
             MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered => .5,
             MonsterBattleEventKind.MonsterFainted => .55,
             _ => .45,
@@ -275,6 +277,8 @@ public sealed class MonsterBattleWindow : Window
         _opponentName.Text = Strings.MonsterBattle.Actor.ToString(Short(state.Opponent.Name, 60), state.Opponent.Level); _opponentName.SetToolTipText(opponentStages.Length == 0 ? state.Opponent.Name : $"{state.Opponent.Name} — {opponentStages}");
         HP(_playerHP, _playerHPValue, _playback.PlayerHP, player.MaximumHP);
         HP(_opponentHP, _opponentHPValue, _playback.OpponentHP, state.Opponent.MaximumHP);
+        if (!string.IsNullOrEmpty(_playback.PlayerStatus)) _playerHPValue.Text += $"  [{Short(_playback.PlayerStatus, 20)}]";
+        if (!string.IsNullOrEmpty(_playback.OpponentStatus)) _opponentHPValue.Text += $"  [{Short(_playback.OpponentStatus, 20)}]";
         var playing = _playback.Phase == MonsterBattlePresentationPhase.PlayingSequence;
         _status.Text = _playback.Phase switch
         {

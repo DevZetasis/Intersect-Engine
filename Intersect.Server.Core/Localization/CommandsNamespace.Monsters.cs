@@ -7,7 +7,7 @@ public static partial class Strings
 {
     public sealed partial class CommandsNamespace
     {
-        public readonly LocaleCommand HealMonster = new() { Name = "healmonster", Help = "Restore owned monster HP/PP (server console only)", Description = "healmonster <individual-monster-UUID> <hp|pp|all>" };
+        public readonly LocaleCommand HealMonster = new() { Name = "healmonster", Help = "Restore owned monster HP/PP or cure status (server console only)", Description = "healmonster <individual-monster-UUID> <hp|pp|status|all>" };
         public readonly LocaleCommand StartMonsterBattle = new()
         {
             Name = "startmonsterbattle", Help = "Start a private 1v1 practice monster battle (console only)",

@@ -130,6 +130,12 @@ namespace Intersect.Server.Migrations.Sqlite.Player
                     b.HasIndex("Move2Id");
                     b.HasIndex("Move3Id");
                     b.HasIndex("Move4Id");
+                    b.Property<Guid?>("StatusId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StatusTurns")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
                       b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();

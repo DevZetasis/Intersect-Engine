@@ -17,6 +17,7 @@ public sealed class OwnedMonsterDetails
     [Key(8)] public long MaximumHP { get; set; }
     [Key(9)] public OwnedMonsterMovePP[] Moves { get; set; } = [];
 
+    [Key(10)] public string StatusName { get; set; } = "";
 }
 
 [MessagePackObject]

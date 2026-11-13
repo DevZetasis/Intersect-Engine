@@ -60,6 +60,7 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
     public DbSet<MonsterMoveDescriptor> MonsterMoves { get; set; }
 
     public DbSet<MonsterNatureDescriptor> MonsterNatures { get; set; }
+    public DbSet<MonsterStatusDescriptor> MonsterStatuses { get; set; }
 
     //Projectiles
     public DbSet<ProjectileDescriptor> Projectiles { get; set; }
@@ -97,6 +98,7 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
         modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BackBattleSprite).HasMaxLength(255).IsRequired().HasDefaultValue("");
         modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BattleBackground).HasMaxLength(255).IsRequired().HasDefaultValue("");
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.MaximumPP).HasDefaultValue(20);
+        modelBuilder.Entity<MonsterStatusDescriptor>().Property(status => status.DamageAmount).HasPrecision(14, 4);
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.EffectsJson).IsRequired(false);
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.AnimationPosition)
             .HasDefaultValue(BattleMoveAnimationPosition.Target);

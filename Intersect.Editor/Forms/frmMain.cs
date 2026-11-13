@@ -98,6 +98,9 @@ public partial class FrmMain : Form
         var monsterNatureMenuItem = new ToolStripMenuItem(Strings.MonsterNatureEditor.Menu);
         monsterNatureMenuItem.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterNature);
         contentEditorsToolStripMenuItem.DropDownItems.Add(monsterNatureMenuItem);
+        var statusMenu = new ToolStripMenuItem("Monster Status Editor");
+        statusMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterStatus);
+        contentEditorsToolStripMenuItem.DropDownItems.Add(statusMenu);
 
         dockLeft.Theme = new VS2015DarkTheme();
         Globals.MapListWindow = new FrmMapList();
@@ -1638,6 +1641,11 @@ public partial class FrmMain : Form
                         mItemEditor.Show();
                     }
 
+                    break;
+                case GameObjectType.MonsterStatus:
+                    var statusEditor = new FrmMonsterStatus();
+                    statusEditor.InitEditor();
+                    statusEditor.Show();
                     break;
                 case GameObjectType.MonsterNature:
                     mMonsterNatureEditor = new FrmMonsterNature();

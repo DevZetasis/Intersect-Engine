@@ -11,6 +11,11 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     private long _sequence;
     public bool HasActive(Guid owner) { lock (SyncRoot) return _active.ContainsKey(owner); }
     public bool ReservesMonster(Guid monster) { lock (SyncRoot) return _active.Values.Any(s => s.Reserves(monster)); }
+    public bool ReservesStatus(Guid status)
+    {
+        lock (SyncRoot) return _active.Values.Any(session => session.ReferencesStatus(status));
+    }
+
     public Guid Start(Guid owner, Func<MonsterBattleSession> create)
     {
         lock (SyncRoot)

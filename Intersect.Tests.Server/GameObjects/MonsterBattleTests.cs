@@ -291,7 +291,7 @@ public class MonsterBattleTests
         var hail = new Intersect.Network.Packets.HailPacket(outer, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), expected, peer.ExportParameters(false));
         Assert.That(hail.Encrypt(), Is.True); Assert.That(hail.Decrypt(outer), Is.True);
         Assert.That(hail.VersionData, Is.EqualTo(expected));
-        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v6"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(expected), Does.EndWith("|monster-battles-v7"));
     }
 
 
@@ -672,5 +672,160 @@ public class MonsterBattleTests
             type: new MonsterTypeDescriptor(Element) { Effectiveness = new() { [Element] = 0 } }), opponent);
         Play(immune);
         Assert.That(immune.Snapshot(1).Opponent.StatStages[1], Is.Zero);
+    }
+
+    private static MonsterMoveDescriptor StatusMove(MonsterStatusDescriptor status, bool cure = false,
+        MonsterMoveEffectTarget target = MonsterMoveEffectTarget.Self, int chance = 100) =>
+        Status(new MonsterMoveEffect
+        {
+            Kind = cure ? MonsterMoveEffectKind.CureStatus : MonsterMoveEffectKind.ApplyStatus,
+            StatusId = status.Id, Target = target, Chance = chance,
+        });
+
+    [Test]
+    public void IdenticalDamageCanPersistOrEndWithBattleAndSwitchingIsIndependent()
+    {
+        foreach (var persist in new[] { false, true })
+        foreach (var removeOnSwitch in new[] { false, true })
+        {
+            var definition = new MonsterStatusDescriptor(Guid.NewGuid())
+            {
+                Name = "Custom condition", Damage = MonsterStatusDamage.Percent, DamageAmount = 12.5m,
+                PersistOutsideBattle = persist, RemoveWhenSwitching = removeOnSwitch,
+            };
+            var owner = Guid.NewGuid();
+            var first = EffectActor(160, 160, 20, StatusMove(definition), Move());
+            var second = Actor(Move(), hp: 1000);
+            var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed });
+            var session = new MonsterBattleSession(new(owner, [first, second]), new(null, [Actor(idle)]),
+                MonsterBattleRules.Generation4, new LastRandom(), findStatus: id => id == definition.Id ? definition : null);
+            definition.DamageAmount = 99; // Content edits do not mutate an active battle.
+            Play(session);
+            var initial = session.Snapshot(1);
+            Assert.That(initial.Player.HP, Is.EqualTo(140));
+            Assert.That(initial.Events.Single(e => e.Kind == MonsterBattleEventKind.StatusDamage).HPAfter, Is.EqualTo(140));
+
+            var action = Action(session);
+            action.Kind = MonsterBattleActionKind.Switch;
+            action.MonsterId = second.Id;
+            session.Submit(owner, action);
+            Assert.That(session.Snapshot(2).Party[0].Actor.HP, Is.EqualTo(140), "Benched statuses do not tick.");
+            var back = Action(session);
+            back.Kind = MonsterBattleActionKind.Switch;
+            back.MonsterId = first.Id;
+            session.Submit(owner, back);
+            Assert.That(session.Snapshot(3).Player.StatusName, Is.EqualTo(removeOnSwitch ? "" : "Custom condition"));
+            Assert.That(session.Snapshot(3).Player.HP, Is.EqualTo(removeOnSwitch ? 140 : 120));
+            session.Cancel("Disconnected.", true);
+            Assert.That(session.Snapshot(4).Player.StatusName, Is.EqualTo(persist && !removeOnSwitch ? "Custom condition" : ""));
+        }
+    }
+
+    [Test]
+    public void StatusPreventionConsumesNoPpAndRecoveryPrecedesPrevention()
+    {
+        foreach (var recovery in new[] { 0, 100 })
+        {
+            var status = new MonsterStatusDescriptor(Guid.NewGuid())
+            {
+                Name = "Drowsy", PreventActionChance = 100, RecoveryChance = recovery,
+                Duration = MonsterStatusDuration.Fixed, MinimumTurns = 2, MaximumTurns = 2,
+            };
+            var own = Actor(Move(), hp: 1000);
+            own.Status = new(status, 2);
+            var session = Session(Guid.NewGuid(), own, Actor(Move(), hp: 1000));
+            Play(session);
+            var first = session.Snapshot(1);
+            Assert.That(first.Moves[0].PP, Is.EqualTo(recovery == 0 ? 20 : 19));
+            Assert.That(first.Events.Any(e => e.Kind == MonsterBattleEventKind.StatusBlocked), Is.EqualTo(recovery == 0));
+            if (recovery == 0)
+            {
+                Play(session);
+                Assert.That(session.Snapshot(2).Player.StatusName, Is.Empty);
+                Play(session);
+                Assert.That(session.Snapshot(3).Moves[0].PP, Is.EqualTo(19));
+            }
+        }
+    }
+
+    [Test]
+    public void ApplicationChecksAccuracyChanceExclusivityAndCure()
+    {
+        var status = new MonsterStatusDescriptor(Guid.NewGuid()) { Name = "Example" };
+        var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed });
+        var miss = StatusMove(status, target: MonsterMoveEffectTarget.Opponent);
+        miss.Accuracy = 1;
+        miss.AlwaysHits = false;
+        var unlikely = StatusMove(status, target: MonsterMoveEffectTarget.Opponent, chance: 1);
+        var owner = Guid.NewGuid();
+        var session = new MonsterBattleSession(new(owner, [EffectActor(500, 500, 20, miss, unlikely, StatusMove(status), StatusMove(status, cure: true))]),
+            new(null, [Actor(idle)]), MonsterBattleRules.Generation4, new LastRandom(), findStatus: _ => status);
+        Play(session);
+        Assert.That(session.Snapshot(1).Events.Any(e => e.Kind == MonsterBattleEventKind.MoveMissed), Is.True);
+        Play(session, 1);
+        Assert.That(session.Snapshot(2).Opponent.StatusName, Is.Empty);
+        Play(session, 2);
+        Play(session, 2);
+        Assert.That(session.Snapshot(4).Events.Any(e => e.Text.Contains("already has")), Is.True);
+        Assert.That(session.Snapshot(4).Moves[2].PP, Is.EqualTo(18));
+        Play(session, 3);
+        Assert.That(session.Snapshot(5).Player.StatusName, Is.Empty);
+        Assert.That(session.Snapshot(5).Events.Any(e => e.Kind == MonsterBattleEventKind.StatusRemoved), Is.True);
+    }
+
+    [Test]
+    public void FixedDamageCanFaintBothSidesBeforeOutcomeAndPercentPenaltiesStack()
+    {
+        var status = new MonsterStatusDescriptor(Guid.NewGuid())
+        {
+            Damage = MonsterStatusDamage.Fixed, DamageAmount = 2000, AttackPercent = 50, SpeedPercent = 25,
+        };
+        var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Speed });
+        var a = Actor(idle, hp: 200);
+        var b = Actor(idle, hp: 200);
+        a.Status = new(status, null);
+        b.Status = new(status, null);
+        Assert.That(a.EffectiveSpeed, Is.EqualTo(5));
+        a.ChangeStage(MonsterStat.Speed, 2);
+        Assert.That(a.EffectiveSpeed, Is.EqualTo(10));
+        var session = Session(Guid.NewGuid(), a, b);
+        Play(session);
+        var state = session.Snapshot(1);
+        Assert.That(state.Outcome, Is.EqualTo(MonsterBattleOutcome.Draw));
+        Assert.That(state.Events.Count(e => e.Kind == MonsterBattleEventKind.MonsterFainted), Is.EqualTo(2));
+
+        var type = new MonsterTypeDescriptor(Element);
+        long Damage(int percent) => MonsterBattleCalculator.Damage(a.Calculation, b.Calculation, Move(), type,
+            MonsterBattleRules.Generation4, new() { AttackStage = 2, AttackPercent = percent }, false, new LastRandom());
+        Assert.That(Damage(50), Is.LessThan(Damage(100)));
+    }
+
+    [Test]
+    public void RandomStatusDurationIncludesBothEndpointsAndBlockedAttemptsDoNotSpendPp()
+    {
+        foreach (var (random, expected) in new (IMonsterRandom, int)[] { (new ZeroRandom(), 2), (new LastRandom(), 4) })
+        {
+            var status = new MonsterStatusDescriptor(Guid.NewGuid())
+            {
+                Duration = MonsterStatusDuration.Random, MinimumTurns = 2, MaximumTurns = 4, PreventActionChance = 100,
+            };
+            var player = EffectActor(1000, 1000, 30, StatusMove(status, target: MonsterMoveEffectTarget.Opponent), Move());
+            var idle = Status(new MonsterMoveEffect { Stat = MonsterStat.Attack });
+            var rival = EffectActor(1000, 1000, 20, idle);
+            var session = new MonsterBattleSession(new(Guid.NewGuid(), [player]), new(null, [rival]),
+                MonsterBattleRules.Generation4, random, findStatus: _ => status);
+            Play(session);
+            for (var turn = 1; turn < expected; turn++)
+            {
+                Assert.That(session.Snapshot(turn).Opponent.StatusName, Is.EqualTo(status.Name));
+                Play(session, 1);
+            }
+            var final = session.Snapshot(expected);
+            Assert.That(final.Opponent.StatusName, Is.Empty);
+            Assert.That(final.Events.Any(entry => entry.Kind == MonsterBattleEventKind.StatusBlocked), Is.True);
+            Play(session, 1);
+            Assert.That(session.Snapshot(expected + 1).Events.Any(entry =>
+                entry.Kind == MonsterBattleEventKind.MoveUsed && entry.ActorId == rival.Id), Is.True);
+        }
     }
 }

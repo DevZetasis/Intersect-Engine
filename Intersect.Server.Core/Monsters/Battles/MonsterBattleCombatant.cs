@@ -39,9 +39,13 @@ public sealed class MonsterBattleCombatant
     public string FrontBattleSprite { get; }
     public string BackBattleSprite { get; }
     public long HP { get; private set; }
+    internal BattleMonsterStatus? Status { get; set; }
+    internal (Guid? Id, int? Turns) PersistentStatus => Status is { Definition.PersistOutsideBattle: true } status
+        ? (status.Definition.Id, status.Turns) : (null, null);
+
     internal MonsterStatValues Stages { get; set; } = new();
     internal int Stage(MonsterStat stat) => (int)Stages.Get(stat);
-    internal long EffectiveSpeed => MonsterBattleCalculator.ApplyStatStage(Calculation.Stats.Speed, Stage(MonsterStat.Speed));
+    internal long EffectiveSpeed => MonsterBattleCalculator.ApplyStatPercent(MonsterBattleCalculator.ApplyStatStage(Calculation.Stats.Speed, Stage(MonsterStat.Speed)), Status?.Definition.SpeedPercent ?? 100);
     public int PartySlot { get; }
     public long MaximumHP => Calculation.Stats.HP;
     public MonsterBattleCombatant(MonsterCalculationActor actor, string name, string sprite, MonsterBattleMove?[] moves, string frontBattleSprite = "", string backBattleSprite = "", long? currentHP = null, int partySlot = -1)
@@ -58,7 +62,7 @@ public sealed class MonsterBattleCombatant
         HP = currentHP ?? MaximumHP;
         if (HP < 0 || HP > MaximumHP) throw new InvalidOperationException("Invalid starting HP.");
     }
-    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves, FrontBattleSprite, BackBattleSprite, HP, PartySlot);
+    internal MonsterBattleCombatant Copy() => new(Calculation, Name, Sprite, Moves, FrontBattleSprite, BackBattleSprite, HP, PartySlot) { Status = Status };
     internal void RestoreResources(long hp, int[] pp)
     {
         if (hp < 0 || hp > MaximumHP || pp.Length != 4) throw new InvalidOperationException("Invalid HP checkpoint.");
@@ -82,7 +86,7 @@ public sealed class MonsterBattleCombatant
     }
 
     internal int[] LegalSlots() => Enumerable.Range(0, Moves.Length).Where(slot => Moves[slot]?.Usable == true).ToArray();
-    public MonsterBattleActorView View() => new() { Id = Id, Name = Name, Sprite = Sprite, Level = Calculation.Level, HP = HP, MaximumHP = MaximumHP, FrontBattleSprite = FrontBattleSprite, BackBattleSprite = BackBattleSprite, StatStages = Stages.ToArray().Skip(1).Select(value => (int)value).ToArray() };
+    public MonsterBattleActorView View() => new() { Id = Id, Name = Name, Sprite = Sprite, Level = Calculation.Level, HP = HP, MaximumHP = MaximumHP, FrontBattleSprite = FrontBattleSprite, BackBattleSprite = BackBattleSprite, StatusName = Status?.Definition.Name ?? "", StatStages = Stages.ToArray().Skip(1).Select(value => (int)value).ToArray() };
 }
 
 /// <summary>Party members are stable throughout the battle. The resolver owns the active slot.</summary>

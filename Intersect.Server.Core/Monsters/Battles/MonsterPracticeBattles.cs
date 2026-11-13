@@ -48,7 +48,12 @@ public static class MonsterPracticeBattles
                         var move = MonsterMoveDescriptor.Get(moveId.Value) ?? throw new InvalidOperationException("An assigned move is missing.");
                         return new MonsterBattleMove(move, MonsterTypeDescriptor.Get(move.TypeId) ?? throw new InvalidOperationException("A move type is missing."), condition?.MovePP[slot].Current);
                     }).ToArray();
-                    return new(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite, condition?.CurrentHP, condition?.Slot ?? -1);
+                    return new MonsterBattleCombatant(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite, condition?.CurrentHP, condition?.Slot ?? -1)
+                    {
+                        Status = condition?.StatusId is { } statusId &&
+                            MonsterStatusDescriptor.Get(statusId) is { IsValid: true, PersistOutsideBattle: true } status
+                            ? new(status, condition.StatusTurns) : null,
+                    };
                 }
                 var ownParty = party.Select(member =>
                 {
@@ -71,7 +76,8 @@ public static class MonsterPracticeBattles
                         var changes = actors.Select(actor => new MonsterOwnershipService.BattleCondition(actor.Id,
                             expectedRevisions[actor.Id], actor.HP, actor.MaximumHP,
                             actor.Moves.Select(move => new Database.PlayerData.Players.MonsterMovePP(
-                                move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray())).ToArray();
+                                move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray(),
+                            actor.PersistentStatus.Id, actor.PersistentStatus.Turns)).ToArray();
                         var revision = service.CommitBattle(player.Id, changes);
                         foreach (var actor in actors) expectedRevisions[actor.Id] = revision;
                     });

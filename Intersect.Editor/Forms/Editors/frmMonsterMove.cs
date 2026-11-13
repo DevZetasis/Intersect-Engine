@@ -128,7 +128,7 @@ public sealed class FrmMonsterMove : EditorForm
     }
     protected override void GameObjectUpdatedDelegate(GameObjectType type)
     {
-        if (type is GameObjectType.MonsterType or GameObjectType.Animation) { ShowFields(); return; }
+        if (type is GameObjectType.MonsterType or GameObjectType.Animation or GameObjectType.MonsterStatus) { ShowFields(); return; }
         if (type != GameObjectType.MonsterMove) return;
         foreach (var (id, draft) in _drafts)
             if (draft.JsonData == _originals[id] && MonsterMoveDescriptor.Get(id) is { } source)
@@ -227,7 +227,7 @@ public sealed class FrmMonsterMove : EditorForm
     private void SaveMoves(object? sender, EventArgs e)
     {
         var changed = _drafts.Values.Where(type => type.JsonData != _originals[type.Id]).ToArray();
-        if (changed.Any(move => !move.HasValidEffects))
+        if (changed.Any(move => !move.HasValidEffects || move.Effects.Any(effect => effect.StatusId is { } id && MonsterStatusDescriptor.Get(id) == null)))
         {
             DarkMessageBox.ShowWarning(Strings.MonsterMoveEditor.InvalidEffects, Text);
             return;

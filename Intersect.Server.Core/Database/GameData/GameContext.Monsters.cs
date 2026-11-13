@@ -7,6 +7,7 @@ namespace Intersect.Server.Database.GameData;
 
 public abstract partial class GameContext
 {
+    public Func<Guid, bool>? StatusReferenceExists { get; set; }
     public Func<Guid, bool>? MoveReferenceExists { get; set; }
     public Func<Guid, bool>? NatureReferenceExists { get; set; }
     private void ValidateMonsterContent()
@@ -19,7 +20,7 @@ public abstract partial class GameContext
             if (NatureReferenceExists?.Invoke(entry.Entity.Id) == true)
                 throw new InvalidOperationException("This nature is assigned to owned monsters and cannot be deleted.");
         var changed = ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
-            .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor ||
+            .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor ||
                 (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor)).ToArray();
         if (changed.Length == 0) return;
         var types = MonsterTypes.AsNoTracking().ToDictionary(item => item.Id);
@@ -49,6 +50,26 @@ public abstract partial class GameContext
                 else species[item.Id] = item;
             }
         }
+        var statuses = MonsterStatuses.AsNoTracking().ToDictionary(item => item.Id);
+        foreach (var entry in ChangeTracker.Entries<MonsterStatusDescriptor>())
+        {
+            var status = entry.Entity;
+            if (entry.State == EntityState.Deleted)
+            {
+                statuses.Remove(status.Id);
+                if (StatusReferenceExists?.Invoke(status.Id) == true ||
+                    Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.ReservesStatus(status.Id) ||
+                    moves.Values.Any(move => move.Effects.Any(effect => effect.StatusId == status.Id)))
+                    throw new InvalidOperationException("This status is referenced by a move, owned monster or active battle.");
+            }
+            else
+            {
+                if (entry.State is EntityState.Added or EntityState.Modified &&
+                    (!status.IsValid || status.AnimationReferences().Any(id => !animations.Contains(id))))
+                    throw new InvalidOperationException("Invalid monster status settings or animation.");
+                statuses[status.Id] = status;
+            }
+        }
         foreach (var entry in changed)
         {
             if (entry.Entity is MonsterTypeDescriptor type)
@@ -67,7 +88,12 @@ public abstract partial class GameContext
                     if (MoveReferenceExists?.Invoke(move.Id) == true || MonsterMoveRules.IsReferenced(move.Id, species.Values))
                         throw new InvalidOperationException("This move is referenced by owned monsters or species learnsets. Remove those references before deleting it.");
                 }
-                else MonsterMoveRules.Validate(move, types.ContainsKey, animations.Contains);
+                else
+                {
+                    MonsterMoveRules.Validate(move, types.ContainsKey, animations.Contains);
+                    if (move.Effects.Any(effect => effect.StatusId is { } id && !statuses.ContainsKey(id)))
+                        throw new InvalidOperationException("A move effect references an unavailable status.");
+                }
             }
             else if (entry.State != EntityState.Deleted && entry.Entity is MonsterSpeciesDescriptor item)
             {
@@ -75,15 +101,15 @@ public abstract partial class GameContext
                 MonsterMoveRules.ValidateLearnset(item, moves.ContainsKey);
             }
             else if (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor animation &&
-                     moves.Values.Any(move => move.AnimationId == animation.Id))
-                throw new InvalidOperationException("This animation is referenced by monster moves.");
+                     (moves.Values.Any(move => move.AnimationId == animation.Id) || statuses.Values.Any(status => status.AnimationReferences().Contains(animation.Id))))
+                throw new InvalidOperationException("This animation is referenced by monster moves or statuses.");
         }
     }
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ChangeTracker.DetectChanges();
         if (!ChangeTracker.Entries().Any(entry => (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted) &&
-                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor ||
+                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterNatureDescriptor ||
                  (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor))))
             return base.SaveChanges(acceptAllChangesOnSuccess);
         lock (MonsterTypeRules.ContentGate)

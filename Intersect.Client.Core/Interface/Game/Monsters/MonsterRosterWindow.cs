@@ -289,6 +289,7 @@ public sealed class MonsterRosterWindow : Window
         if (data?.ConditionInitialized == true)
         {
             _condition.Text = $"HP {data.CurrentHP} / {data.MaximumHP}" + (data.CurrentHP == 0 ? " - Fainted" : "");
+            if (!string.IsNullOrEmpty(data.StatusName)) _condition.Text += $"  [{data.StatusName}]";
             _conditionHP.Value = data.MaximumHP > 0 ? (float)Math.Clamp(data.CurrentHP / (double)data.MaximumHP, 0, 1) : 0;
             _conditionHP.IsHidden = false;
             _movePP.Text = string.Join("\n", data.Moves.Select(m => m.MoveId == null ? $"{m.Slot + 1}. Empty slot" : $"{m.Slot + 1}. {m.Name}: PP {m.CurrentPP}/{m.MaximumPP}"));

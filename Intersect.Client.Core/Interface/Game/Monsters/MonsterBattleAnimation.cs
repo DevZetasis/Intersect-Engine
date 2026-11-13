@@ -29,7 +29,8 @@ internal sealed class MonsterBattleAnimation(
 
     internal void Begin(MonsterBattlePresentationEvent entry)
     {
-        if (entry.Kind != MonsterBattleEventKind.MoveUsed) return;
+        if (entry.Kind is not (MonsterBattleEventKind.MoveUsed or MonsterBattleEventKind.StatusApplied or
+            MonsterBattleEventKind.StatusRemoved or MonsterBattleEventKind.StatusBlocked or MonsterBattleEventKind.StatusDamage)) return;
         _attack = null;
         if (entry.AnimationId is not { } id || findAnimation(id) is not { } animation) return;
 

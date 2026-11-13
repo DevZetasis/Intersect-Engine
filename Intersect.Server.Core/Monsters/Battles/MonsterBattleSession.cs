@@ -7,7 +7,7 @@ using Intersect.Server.Monsters.Calculations;
 namespace Intersect.Server.Monsters.Battles;
 
 /// <summary>One active combatant per side, with independent condition for each party member.</summary>
-public sealed class MonsterBattleSession
+public sealed partial class MonsterBattleSession
 {
     private readonly object _gate = new();
     private readonly MonsterBattleRules _rules;
@@ -34,7 +34,7 @@ public sealed class MonsterBattleSession
 
     public MonsterBattleSession(MonsterBattleSide player, MonsterBattleSide opponent, MonsterBattleRules rules,
         IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "",
-        Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null)
+        Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null, Func<Guid, MonsterStatusDescriptor?>? findStatus = null)
     {
         rules.Validate();
         var members = player.Party.Concat(opponent.Party).ToArray();
@@ -50,6 +50,7 @@ public sealed class MonsterBattleSession
         _persist = persistParty ?? (persist == null ? null : changed => persist(changed.Single()));
         _playerSide = player.Copy();
         _opponentSide = opponent.Copy();
+        SnapshotStatuses(findStatus ?? MonsterStatusDescriptor.Get);
         _rules = rules with { };
         _random = random;
         _opponentProvider = provider ?? new RandomPracticeDecisionProvider();
@@ -66,7 +67,7 @@ public sealed class MonsterBattleSession
     {
         lock (_gate)
         {
-            var resources = _playerSide.Party.Concat(_opponentSide.Party).Select(actor => (Actor: actor, actor.HP, PP: PP(actor), actor.Stages)).ToArray();
+            var resources = _playerSide.Party.Concat(_opponentSide.Party).Select(actor => (Actor: actor, actor.HP, PP: PP(actor), actor.Stages, actor.Status)).ToArray();
             var active = Player.Id;
             var turn = Turn;
             var revision = Revision;
@@ -83,6 +84,7 @@ public sealed class MonsterBattleSession
                     {
                         saved.Actor.RestoreResources(saved.HP, saved.PP);
                         saved.Actor.Stages = saved.Stages;
+                        saved.Actor.Status = saved.Status;
                     }
                     _playerSide.Select(active);
                     Turn = turn;
@@ -113,7 +115,7 @@ public sealed class MonsterBattleSession
                 return;
             }
 
-            var before = _playerSide.Party.ToDictionary(actor => actor.Id, actor => (actor.HP, PP: PP(actor)));
+            var before = _playerSide.Party.ToDictionary(actor => actor.Id, actor => (actor.HP, PP: PP(actor), actor.PersistentStatus));
             var messages = new List<string>();
             var events = new List<MonsterBattlePresentationEvent>();
             _previousRevision = Revision;
@@ -149,13 +151,15 @@ public sealed class MonsterBattleSession
                             else Attack(Opponent, Player, opponentMove, messages, events);
                         }
                     }
+                    TickStatus(Player, messages, events);
+                    TickStatus(Opponent, messages, events);
                     CompleteTurn(messages, events);
                 }
                 Revision = Guid.NewGuid();
                 _events = events.ToArray();
                 _messages = messages.ToArray();
                 _changed = _playerSide.Party.Where(actor => actor.HP != before[actor.Id].HP ||
-                    !PP(actor).SequenceEqual(before[actor.Id].PP)).ToArray();
+                    actor.PersistentStatus != before[actor.Id].PersistentStatus || !PP(actor).SequenceEqual(before[actor.Id].PP)).ToArray();
             }
             catch
             {
@@ -167,6 +171,8 @@ public sealed class MonsterBattleSession
 
     private void Switch(Guid target, bool withdraw, List<string> messages, List<MonsterBattlePresentationEvent> events)
     {
+        if (Player.Status is { Definition.RemoveWhenSwitching: true })
+            RemoveStatus(Player, messages, events);
         if (withdraw)
         {
             messages.Add($"{Player.Name} withdrew.");
@@ -182,6 +188,7 @@ public sealed class MonsterBattleSession
         List<string> messages, List<MonsterBattlePresentationEvent> events)
     {
         if (attacker.HP == 0 || defender.HP == 0) return;
+        if (!CanAct(attacker, messages, events)) return;
         move.Consume(); // An executed attempt spends PP even when it misses or cannot change a value.
         var definition = move.Definition;
         var status = definition.Category == MonsterMoveCategory.Status;
@@ -217,6 +224,10 @@ public sealed class MonsterBattleSession
                 DefenseStage = defender.Stage(MonsterStat.Defense),
                 SpecialAttackStage = attacker.Stage(MonsterStat.SpecialAttack),
                 SpecialDefenseStage = defender.Stage(MonsterStat.SpecialDefense),
+                AttackPercent = attacker.Status?.Definition.AttackPercent ?? 100,
+                DefensePercent = defender.Status?.Definition.DefensePercent ?? 100,
+                SpecialAttackPercent = attacker.Status?.Definition.SpecialAttackPercent ?? 100,
+                SpecialDefensePercent = defender.Status?.Definition.SpecialDefensePercent ?? 100,
             };
             var damage = MonsterBattleCalculator.Damage(attacker.Calculation, defender.Calculation, definition, move.Type,
                 _rules, modifiers, critical, _random);
@@ -244,6 +255,12 @@ public sealed class MonsterBattleSession
             if (target.HP == 0)
             {
                 Emit(MonsterBattleEventKind.EffectFailed, target, $"{target.Name} has fainted.");
+                continue;
+            }
+
+            if (effect.Kind is MonsterMoveEffectKind.ApplyStatus or MonsterMoveEffectKind.CureStatus)
+            {
+                ResolveStatusEffect(attacker, target, effect, messages, events);
                 continue;
             }
 
@@ -313,7 +330,7 @@ public sealed class MonsterBattleSession
 
         if (Outcome != MonsterBattleOutcome.Active)
         {
-            ClearStages();
+            ClearTemporaryState();
             Phase = MonsterBattlePhase.Completed;
             events.Add(new() { Kind = MonsterBattleEventKind.BattleFinished, Order = events.Count, Text = messages[^1] });
             return;
@@ -357,16 +374,20 @@ public sealed class MonsterBattleSession
         lock (_gate) if (Outcome == MonsterBattleOutcome.Active) Finish(disconnect ? MonsterBattleOutcome.Forfeit : MonsterBattleOutcome.Cancelled, reason);
     }
 
-    private void ClearStages()
+    private void ClearTemporaryState()
     {
-        foreach (var actor in _playerSide.Party.Concat(_opponentSide.Party)) actor.Stages = new();
+        foreach (var actor in _playerSide.Party.Concat(_opponentSide.Party))
+        {
+            actor.Stages = new();
+            if (actor.Status is { Definition.PersistOutsideBattle: false }) actor.Status = null;
+        }
     }
 
     private void Finish(MonsterBattleOutcome result, string message)
     {
         _previousRevision = Revision;
         Outcome = result;
-        ClearStages();
+        ClearTemporaryState();
         Phase = MonsterBattlePhase.Ended;
         Revision = Guid.NewGuid();
         _messages = [message];

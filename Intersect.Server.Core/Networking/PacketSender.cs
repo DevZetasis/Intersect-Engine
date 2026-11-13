@@ -1772,6 +1772,9 @@ public static partial class PacketSender
                     SendGameObject(client, obj.Value, false, false, packetList);
                 }
                 break;
+            case GameObjectType.MonsterStatus:
+                foreach (var obj in MonsterStatusDescriptor.Lookup) SendGameObject(client, obj.Value, false, false, packetList);
+                break;
             case GameObjectType.MonsterNature:
                 foreach (var obj in MonsterNatureDescriptor.Lookup)
                 {

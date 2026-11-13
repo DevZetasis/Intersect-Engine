@@ -9,6 +9,23 @@ public sealed record MonsterMovePP(Guid? MoveId, int Current, int Maximum);
 
 public sealed partial class MonsterInstance
 {
+    public Guid? StatusId { get; private set; }
+    public int? StatusTurns { get; private set; }
+
+    internal void SetStatus(Guid? id, int? turns, Guid revision)
+    {
+        StatusId = id;
+        StatusTurns = turns;
+        ValidateStatus();
+        Revision = revision;
+    }
+
+    private void ValidateStatus()
+    {
+        if (StatusId == Guid.Empty || StatusTurns is <= 0 or > 999 || (StatusId == null && StatusTurns != null))
+            throw new InvalidOperationException("Invalid stored monster status.");
+    }
+
     public bool ConditionInitialized { get; private set; }
     public long CurrentHP { get; private set; }
     public long MaximumHPAtLastUpdate { get; private set; }
@@ -50,6 +67,7 @@ public sealed partial class MonsterInstance
     }
     internal void ValidateCondition()
     {
+        ValidateStatus();
         if (!ConditionInitialized)
         { if (CurrentHP != 0 || MaximumHPAtLastUpdate != 0 || _movePP.Length != 0) throw new InvalidOperationException("Uninitialized condition has resource values."); return; }
         if (CurrentHP < 0 || MaximumHPAtLastUpdate < 1 || CurrentHP > MaximumHPAtLastUpdate || _movePP.Length != 4 ||
