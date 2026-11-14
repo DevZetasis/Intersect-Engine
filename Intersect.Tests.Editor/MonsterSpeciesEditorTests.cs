@@ -109,6 +109,12 @@ public class MonsterSpeciesEditorTests
             }
             var selected = Field<MonsterSpeciesDescriptor>(editor, "_selected");
             selected.FrontBattleSprite = "front.png"; selected.BackBattleSprite = "back.png"; selected.BattleBackground = "scene.png";
+            var weights = Field<FlowLayoutPanel>(editor, "_genderWeights");
+            var maleWeight = weights.Controls.Cast<FlowLayoutPanel>()
+                .Single(row => row.Controls.Cast<Control>().Any(control => control.Text.Contains(MonsterGenderDescriptor.DefaultMale.ToString())))
+                .Controls.OfType<NumericUpDown>().Single();
+            maleWeight.Value = 75;
+            Assert.That(selected.GenderWeights[MonsterGenderDescriptor.DefaultMale], Is.EqualTo(75));
             var draftJson = selected.BaseStatsJson;
             typeof(FrmMonsterSpecies).GetMethod("CopySpecies", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(editor, [null, EventArgs.Empty]);
@@ -119,6 +125,7 @@ public class MonsterSpeciesEditorTests
             var pasted = Field<MonsterSpeciesDescriptor>(editor, "_selected");
             Assert.That(pasted.Id, Is.EqualTo(target.Id));
             Assert.That(pasted.BaseStatsJson, Is.EqualTo(draftJson));
+            Assert.That(pasted.GenderWeights[MonsterGenderDescriptor.DefaultMale], Is.EqualTo(75));
             Assert.That(pasted.FrontBattleSprite, Is.EqualTo("front.png")); Assert.That(pasted.BackBattleSprite, Is.EqualTo("back.png")); Assert.That(pasted.BattleBackground, Is.EqualTo("scene.png"));
             var table = Field<TableLayoutPanel>(editor, "_fields");
             editor.PerformLayout();

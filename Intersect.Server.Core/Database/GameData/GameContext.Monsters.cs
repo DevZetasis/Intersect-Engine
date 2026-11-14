@@ -7,6 +7,7 @@ namespace Intersect.Server.Database.GameData;
 
 public abstract partial class GameContext
 {
+    public Func<Guid, bool>? GenderReferenceExists { get; set; }
     public Func<Guid, bool>? StatusReferenceExists { get; set; }
     public Func<Guid, bool>? MoveReferenceExists { get; set; }
     public Func<Guid, bool>? NatureReferenceExists { get; set; }
@@ -20,7 +21,7 @@ public abstract partial class GameContext
             if (NatureReferenceExists?.Invoke(entry.Entity.Id) == true)
                 throw new InvalidOperationException("This nature is assigned to owned monsters and cannot be deleted.");
         var changed = ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
-            .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor ||
+            .Where(entry => entry.Entity is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor ||
                 (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor)).ToArray();
         if (changed.Length == 0) return;
         var types = MonsterTypes.AsNoTracking().ToDictionary(item => item.Id);
@@ -50,6 +51,28 @@ public abstract partial class GameContext
                 else species[item.Id] = item;
             }
         }
+        var genders = MonsterGenders.AsNoTracking().Select(gender => gender.Id).ToHashSet();
+        foreach (var entry in ChangeTracker.Entries<MonsterGenderDescriptor>())
+        {
+            var gender = entry.Entity;
+            if (entry.State == EntityState.Deleted)
+            {
+                if (gender.Id == MonsterGenderDescriptor.DefaultMale || gender.Id == MonsterGenderDescriptor.DefaultFemale ||
+                    GenderReferenceExists?.Invoke(gender.Id) == true ||
+                    species.Values.Any(item => item.GenderWeights?.ContainsKey(gender.Id) == true))
+                    throw new InvalidOperationException("This gender is used by the default distribution, a species or an owned monster.");
+                genders.Remove(gender.Id);
+            }
+            else
+            {
+                if ((entry.State is EntityState.Added or EntityState.Modified) && !gender.IsValid)
+                    throw new InvalidOperationException("Enter a gender name of 1–80 characters and an optional symbol of at most 16 characters.");
+                genders.Add(gender.Id);
+            }
+        }
+        // The built-in defaults are installed by the game migration. EnsureCreated test worlds can use the implicit defaults.
+        genders.Add(MonsterGenderDescriptor.DefaultMale);
+        genders.Add(MonsterGenderDescriptor.DefaultFemale);
         var statuses = MonsterStatuses.AsNoTracking().ToDictionary(item => item.Id);
         foreach (var entry in ChangeTracker.Entries<MonsterStatusDescriptor>())
         {
@@ -99,6 +122,8 @@ public abstract partial class GameContext
             {
                 MonsterTypeRules.Validate(item, types.ContainsKey);
                 MonsterMoveRules.ValidateLearnset(item, moves.ContainsKey);
+                if (!MonsterGenderDescriptor.ValidDistribution(item.GenderWeights, genders.Contains))
+                    throw new InvalidOperationException("Gender weights must reference existing genders, be 0–100000, and include a positive weight.");
             }
             else if (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor animation &&
                      (moves.Values.Any(move => move.AnimationId == animation.Id) || statuses.Values.Any(status => status.AnimationReferences().Contains(animation.Id))))
@@ -109,7 +134,7 @@ public abstract partial class GameContext
     {
         ChangeTracker.DetectChanges();
         if (!ChangeTracker.Entries().Any(entry => (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted) &&
-                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterNatureDescriptor ||
+                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterNatureDescriptor ||
                  (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor))))
             return base.SaveChanges(acceptAllChangesOnSuccess);
         lock (MonsterTypeRules.ContentGate)

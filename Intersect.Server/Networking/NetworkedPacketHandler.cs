@@ -824,7 +824,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -887,7 +887,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.Animation)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -937,6 +937,20 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterGender:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    using (var playerDb = DbInterface.CreatePlayerContext())
+                    {
+                        if (id == MonsterGenderDescriptor.DefaultMale || id == MonsterGenderDescriptor.DefaultFemale ||
+                            playerDb.OwnedMonsters.Any(monster => monster.GenderId == id) ||
+                            gameDb.MonsterSpecies.AsNoTracking().AsEnumerable().Any(species => species.GenderWeights?.ContainsKey(id) == true))
+                        {
+                            PacketSender.SendError(client, "This gender is used by the default distribution, a species or an owned monster.", "Monster Gender");
+                            return;
+                        }
+                    }
+                    obj = MonsterGenderDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterStatus:
                     using (var gameDb = DbInterface.CreateGameContext())
@@ -1101,7 +1115,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1133,6 +1147,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterGender:
+                    obj = MonsterGenderDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterStatus:
                     obj = MonsterStatusDescriptor.Get(id);
@@ -1250,7 +1267,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor)
                     {
                         try
                         {
@@ -1260,12 +1277,20 @@ internal sealed partial class NetworkedPacketHandler
                                 candidate.Load(packet.Data);
                                 MonsterTypeRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null);
                                 MonsterMoveRules.ValidateLearnset(candidate, moveId => MonsterMoveDescriptor.Get(moveId) != null);
+                                if (!MonsterGenderDescriptor.ValidDistribution(candidate.GenderWeights, gender => MonsterGenderDescriptor.Get(gender) != null))
+                                    throw new InvalidOperationException("Gender weights must reference existing genders and include a positive weight.");
                             }
                             else if (obj is MonsterNatureDescriptor)
                             {
                                 var candidate = new MonsterNatureDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterNatureRules.Validate(candidate);
+                            }
+                            else if (obj is MonsterGenderDescriptor)
+                            {
+                                var candidate = new MonsterGenderDescriptor(id);
+                                candidate.Load(packet.Data);
+                                if (!candidate.IsValid) throw new InvalidOperationException("Invalid gender name or symbol.");
                             }
                             else if (obj is MonsterStatusDescriptor)
                             {

@@ -125,7 +125,8 @@ public sealed partial class MonsterOwnershipService
             var slot = partySlot >= 0 ? partySlot : FindSlot(owned, MonsterLocation.Storage, int.MaxValue);
             var ivs = MonsterAttributeGeneration.GenerateIVs(_random);
             var natureId = MonsterAttributeGeneration.SelectNature(_natures(), _random);
-            var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot, ivs, natureId);
+            var genderId = MonsterAttributeGeneration.SelectGender(_species(speciesId), _random);
+            var monster = new MonsterInstance(ownerId, speciesId, requestId, location, slot, ivs, natureId, genderId);
             monster.InitializeMoves(MonsterMoveAssignment.Initial(_species(speciesId), monster.Level, _moveExists));
             ReconcileCondition(monster);
             db.OwnedMonsters.Add(monster);

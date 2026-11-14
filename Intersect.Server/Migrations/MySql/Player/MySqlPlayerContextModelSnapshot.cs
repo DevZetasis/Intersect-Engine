@@ -148,6 +148,10 @@ namespace Intersect.Server.Migrations.MySql.Player
                     b.Property<int?>("StatusTurns")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("GenderId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
                     b.HasKey("Id");
                       b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();

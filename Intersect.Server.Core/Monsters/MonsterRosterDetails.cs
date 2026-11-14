@@ -10,8 +10,10 @@ public static class MonsterRosterDetails
     public static OwnedMonsterDetails Create(MonsterInstance monster, MonsterSpeciesDescriptor? species,
         MonsterNatureDescriptor? nature, MonsterBattleRules rules)
     {
+        var gender = monster.GenderId is { } genderId ? MonsterGenderDescriptor.Get(genderId) : null;
         var details = new OwnedMonsterDetails
         {
+            GenderId = monster.GenderId, GenderName = gender?.Name, GenderSymbol = gender?.Symbol,
             StatusName = monster.StatusId is { } statusId ? MonsterStatusDescriptor.Get(statusId)?.Name ?? "" : "",
             ConditionInitialized = monster.ConditionInitialized, CurrentHP = monster.CurrentHP, MaximumHP = monster.MaximumHPAtLastUpdate,
             Moves = monster.MovePP.Select((p, slot) => new OwnedMonsterMovePP { Slot = slot, MoveId = p.MoveId,

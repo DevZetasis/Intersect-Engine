@@ -10,10 +10,11 @@ public sealed partial class MonsterInstance
 {
     private MonsterInstance() { }
 
-    internal MonsterInstance(Guid ownerId, Guid speciesId, Guid grantRequestId, MonsterLocation location, int slot, MonsterStatValues ivs, Guid? natureId)
+    internal MonsterInstance(Guid ownerId, Guid speciesId, Guid grantRequestId, MonsterLocation location, int slot, MonsterStatValues ivs, Guid? natureId, Guid? genderId = null)
     {
         MonsterStatCalculator.ValidateIVs(ivs);
         NatureId = natureId;
+        GenderId = genderId;
         IvHP = checked((int)ivs.HP);
         IvAttack = checked((int)ivs.Attack);
         IvDefense = checked((int)ivs.Defense);
@@ -42,6 +43,7 @@ public sealed partial class MonsterInstance
     public Guid GrantRequestId { get; private set; }
     public Guid Revision { get; private set; } = Guid.NewGuid();
 
+    public Guid? GenderId { get; private set; }
     public Guid? NatureId { get; private set; }
     public Guid? Move1Id { get; private set; }
     public Guid? Move2Id { get; private set; }

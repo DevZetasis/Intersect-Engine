@@ -15,6 +15,9 @@ public static class MonsterDiagnostics
             $"Level: {monster.Level}; Experience: {monster.Experience}",
             $"Placement: {monster.Location} #{monster.Slot + 1}",
             monster.NatureId == null ? "Nature: neutral/unassigned" : $"Nature: {nature?.Name ?? "Missing definition"} ({monster.NatureId})",
+            monster.GenderId is { } genderId
+                ? $"Gender: {MonsterGenderDescriptor.Get(genderId)?.Name ?? "Unavailable"} ({genderId})"
+                : "Gender: Unspecified",
             monster.StatusId is { } statusId
                 ? $"Status: {MonsterStatusDescriptor.Get(statusId)?.Name ?? "Unavailable"} ({statusId}), turns: {monster.StatusTurns?.ToString() ?? "indefinite"}"
                 : "Status: None",

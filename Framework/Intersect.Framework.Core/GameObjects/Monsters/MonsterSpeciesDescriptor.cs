@@ -33,6 +33,17 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
     }
 
     [NotMapped]
+    public Dictionary<Guid, int> GenderWeights { get; set; } = MonsterGenderDescriptor.DefaultDistribution();
+
+    [Column("GenderWeights"), JsonIgnore]
+    public string GenderWeightsJson
+    {
+        get => JsonConvert.SerializeObject(GenderWeights);
+        set => GenderWeights = value == null ? MonsterGenderDescriptor.DefaultDistribution()
+            : JsonConvert.DeserializeObject<Dictionary<Guid, int>>(value) ?? new();
+    }
+
+    [NotMapped]
     public List<MonsterLearnsetEntry> Learnset { get; set; } = new();
 
     [Column("Learnset"), JsonIgnore]
@@ -64,6 +75,8 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
             // Missing assignments in older content mean unconfigured, even when reusing a draft.
             if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(TypeIds), StringComparison.OrdinalIgnoreCase) == null)
                 TypeIds = Array.Empty<Guid>();
+            if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(GenderWeights), StringComparison.OrdinalIgnoreCase) == null)
+                GenderWeights = MonsterGenderDescriptor.DefaultDistribution();
             if (Newtonsoft.Json.Linq.JObject.Parse(json).Property(nameof(Learnset), StringComparison.OrdinalIgnoreCase) == null)
                 Learnset = new();
             var appearance = Newtonsoft.Json.Linq.JObject.Parse(json);

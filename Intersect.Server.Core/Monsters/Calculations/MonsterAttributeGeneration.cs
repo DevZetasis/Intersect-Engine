@@ -23,4 +23,20 @@ public static class MonsterAttributeGeneration
         }
         throw new InvalidOperationException("Nature selection did not resolve.");
     }
+    public static Guid? SelectGender(MonsterSpeciesDescriptor? species, IMonsterRandom random,
+        Func<Guid, bool>? exists = null)
+    {
+        exists ??= id => MonsterGenderDescriptor.Get(id) is { IsValid: true };
+        var weights = species?.GenderWeights?.Where(pair => pair.Key != Guid.Empty &&
+            pair.Value is > 0 and <= 100000 && exists(pair.Key)).OrderBy(pair => pair.Key).ToArray();
+        if (weights is not { Length: > 0 }) return null;
+        var total = weights.Sum(pair => (long)pair.Value);
+        var roll = MonsterRandom.Draw(random, total);
+        foreach (var (id, weight) in weights)
+        {
+            if (roll < weight) return id;
+            roll -= weight;
+        }
+        throw new InvalidOperationException("Gender weight selection did not resolve.");
+    }
 }

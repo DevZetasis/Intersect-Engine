@@ -136,6 +136,9 @@ namespace Intersect.Server.Migrations.Sqlite.Player
                     b.Property<int?>("StatusTurns")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("GenderId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
                       b.HasIndex("NatureId");
                     b.HasIndex("GrantRequestId").IsUnique();

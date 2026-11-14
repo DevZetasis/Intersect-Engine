@@ -59,7 +59,7 @@ public class MonsterRosterLayoutTests
                 Monsters = [new() { Id = Guid.NewGuid(), SpeciesId = species.Id, Nickname = "Test Monster", Level = 12, Location = MonsterLocation.Party, Slot = 0 }],
             };
             var first = player.MonsterRoster.Monsters[0];
-            first.Details = new OwnedMonsterDetails { NatureId = Guid.NewGuid(), NatureName = "Patient custom nature",
+            first.Details = new OwnedMonsterDetails { GenderId = Guid.NewGuid(), GenderName = "Astral", GenderSymbol = "*", NatureId = Guid.NewGuid(), NatureName = "Patient custom nature",
                 IVs = [1, 2, 3, 4, 5, 6], EVs = [0, 4, 8, 12, 16, 20], CalculatedStats = [100, 101, 102, 103, 104, 105],
                 ConditionInitialized = true, CurrentHP = 25, MaximumHP = 100,
                 Moves = [new() { Slot = 0, MoveId = Guid.NewGuid(), Name = "Persistent Move", CurrentPP = 3, MaximumPP = 20 }] };
@@ -116,6 +116,7 @@ public class MonsterRosterLayoutTests
             Assert.That(Descendants(window).OfType<Button>().Single(b => b.Name == "MoveButton").Text, Is.EqualTo("Store in storage"));
             Label Named(string name) => Descendants(window).OfType<Label>().Single(label => label.Name == name);
             Assert.That(Named("SelectedNature").Text, Does.Contain("Patient custom nature"));
+            Assert.That(Named("SelectedGender").Text, Is.EqualTo("Gender: Astral"));
             Assert.That(Named("SelectedCondition").Text, Does.Contain("25 / 100"));
             Assert.That(Named("SelectedMovePP").Text, Does.Contain("3/20"));
             Assert.That(Descendants(window).OfType<ProgressBar>().Single(b => b.Name == "SelectedHPBar").Value, Is.EqualTo(.25f));
@@ -131,6 +132,7 @@ public class MonsterRosterLayoutTests
             list.SelectedRow = row;
             list.SelectedRow = list[1];
             Assert.That(Named("SelectedNature").Text, Does.Contain("Neutral / Unassigned"));
+            Assert.That(Named("SelectedGender").Text, Is.EqualTo("Gender: Unspecified"));
             Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("11"));
             Assert.That(Named("SelectedIdentity").Text, Does.Contain("Storage #1"));
             list.SelectedRow = row;
@@ -402,11 +404,13 @@ public class MonsterRosterLayoutTests
                 sentOut.PreviousRevision = replacement.Revision;
                 sentOut.Opponent.Id = replacement.Opponent.Id;
                 sentOut.Player = sentOut.Party[1].Actor;
+                sentOut.Player.GenderId = Guid.NewGuid();
+                sentOut.Player.GenderName = "Genderless";
                 sentOut.Player.BackBattleSprite = "reserve-back.png";
                 sentOut.Moves = [new() { Slot = 0, Name = "Reserve hit", PP = 4, MaximumPP = 7, Usable = true }];
                 sentOut.Events = [new() { Kind = MonsterBattleEventKind.SendOut, ActorId = reserveId, TargetId = reserveId, Incoming = sentOut.Player }];
                 applyBattle.Invoke(packetHandler, [null, sentOut]); battleWindow.Update();
-                Assert.That(BattleLabel("PlayerName").Text, Does.Contain("Reserve"));
+                Assert.That(BattleLabel("PlayerName").Text, Does.Contain("Reserve").And.Contain("Genderless"));
                 Assert.That(BattleLabel("PlayerHPValue").Text, Is.EqualTo("HP 20 / 25"));
                 ClickBattle("SkipButton");
                 Assert.That(ownSprite.IsHidden, Is.False);

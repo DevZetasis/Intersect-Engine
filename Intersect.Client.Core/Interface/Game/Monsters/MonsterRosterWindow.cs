@@ -26,7 +26,7 @@ public sealed class MonsterRosterWindow : Window
     private readonly ScrollControl _details;
     private readonly Panel _detailsContent;
     private readonly Label _identity;
-    private readonly Label _nature;
+    private readonly Label _nature, _gender;
     private readonly Label _totalEvs;
     private readonly Label _condition, _movePP;
     private readonly ProgressBar _conditionHP;
@@ -93,6 +93,7 @@ public sealed class MonsterRosterWindow : Window
 
         _identity = DetailLabel("SelectedIdentity", 48);
         _nature = DetailLabel("SelectedNature", 28);
+        _gender = DetailLabel("SelectedGender", 28);
         _condition = DetailLabel("SelectedCondition", 28);
         _conditionHP = new ProgressBar(_detailsContent) { Name = "SelectedHPBar", Dock = Pos.Top, Height = 18, Font = _font, FontSize = 14, AutoLabel = false };
         _movePP = DetailLabel("SelectedMovePP", 100);
@@ -269,7 +270,7 @@ public sealed class MonsterRosterWindow : Window
         _name.Text = string.Empty;
         _species.Text = string.Empty;
         _identity.Text = string.Empty;
-        _nature.Text = string.Empty;
+        _nature.Text = _gender.Text = string.Empty;
         _condition.Text = _movePP.Text = string.Empty; _conditionHP.Value = 0; _conditionHP.Text = string.Empty; _conditionHP.IsHidden = true;
         _totalEvs.Text = string.Empty;
         _calculationStatus.Text = Strings.Monsters.SelectMonster;
@@ -299,6 +300,8 @@ public sealed class MonsterRosterWindow : Window
             : string.IsNullOrWhiteSpace(data.NatureName) ? Strings.Monsters.MissingNature.ToString() : data.NatureName;
         _nature.Text = data == null ? string.Empty : Strings.Monsters.Nature.ToString(natureName);
         _nature.SetToolTipText(_nature.Text);
+        _gender.Text = data == null ? "" : $"Gender: {MonsterGenderText.Format(data.GenderId, data.GenderName, data.GenderSymbol, _gender.Font, _gender.FontSize)}";
+        _gender.SetToolTipText(_gender.Text);
         _calculationStatus.Text = data == null ? Strings.Monsters.DetailsUnavailable
             : data.CalculatedStats is not { Length: 6 } ? Strings.Monsters.StatsUnavailable : string.Empty;
         for (var i = 0; i < 6; i++)

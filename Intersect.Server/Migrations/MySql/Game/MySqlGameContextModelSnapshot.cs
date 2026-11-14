@@ -486,6 +486,33 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.ToTable("MonsterMoves");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterGenderDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("longtext")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("Symbol")
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterGenders");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -525,6 +552,10 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.Property<string>("LearnsetJson")
                         .HasColumnType("longtext")
                         .HasColumnName("Learnset");
+
+                    b.Property<string>("GenderWeightsJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("GenderWeights");
 
                     b.HasKey("Id");
 

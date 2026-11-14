@@ -48,8 +48,11 @@ public static class MonsterPracticeBattles
                         var move = MonsterMoveDescriptor.Get(moveId.Value) ?? throw new InvalidOperationException("An assigned move is missing.");
                         return new MonsterBattleMove(move, MonsterTypeDescriptor.Get(move.TypeId) ?? throw new InvalidOperationException("A move type is missing."), condition?.MovePP[slot].Current);
                     }).ToArray();
+                    var genderId = condition == null ? MonsterAttributeGeneration.SelectGender(template, random) : condition.GenderId;
+                    var gender = genderId is { } assigned ? MonsterGenderDescriptor.Get(assigned) : null;
                     return new MonsterBattleCombatant(new(id, level, MonsterStatCalculator.Calculate(template.BaseStats, level, ivs, evs, temperament, rules), template.TypeIds), name, template.Sprite, moves, template.FrontBattleSprite, template.BackBattleSprite, condition?.CurrentHP, condition?.Slot ?? -1)
                     {
+                        GenderId = genderId, GenderName = gender?.Name, GenderSymbol = gender?.Symbol,
                         Status = condition?.StatusId is { } statusId &&
                             MonsterStatusDescriptor.Get(statusId) is { IsValid: true, PersistOutsideBattle: true } status
                             ? new(status, condition.StatusTurns) : null,

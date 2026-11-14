@@ -243,4 +243,36 @@ public class MonsterMoveEditorTests
             Handler.GameObjectUpdatedDelegate = null!;
         }
     }
+
+    [Test]
+    public void GenderEditorCopiesSymbolsAndPreservesUuid()
+    {
+        var a = new MonsterGenderDescriptor(Guid.NewGuid()) { Name = "Astral", Symbol = "*" };
+        var b = new MonsterGenderDescriptor(Guid.NewGuid()) { Name = "Destination" };
+        MonsterGenderDescriptor.Lookup.Set(a.Id, a);
+        MonsterGenderDescriptor.Lookup.Set(b.Id, b);
+        try
+        {
+            using var editor = new FrmMonsterGender();
+            editor.InitEditor();
+            Invoke(editor, "SelectGender", a.Id);
+            Field<TextBox>(editor, "_name").Text = "Solar";
+            Invoke(editor, "CopyGender", null, EventArgs.Empty);
+            Invoke(editor, "SelectGender", b.Id);
+            Invoke(editor, "PasteGender", null, EventArgs.Empty);
+            var draft = Field<MonsterGenderDescriptor>(editor, "_selected");
+            Assert.That(draft.Id, Is.EqualTo(b.Id));
+            Assert.That(draft.Name, Is.EqualTo("Solar"));
+            Assert.That(draft.Symbol, Is.EqualTo("*"));
+            Invoke(editor, "UndoGender", null, EventArgs.Empty);
+            Assert.That(draft.JsonData, Is.EqualTo(b.JsonData));
+            Assert.That(a.Name, Is.EqualTo("Astral"));
+        }
+        finally
+        {
+            MonsterGenderDescriptor.Lookup.DeleteAt(a.Id);
+            MonsterGenderDescriptor.Lookup.DeleteAt(b.Id);
+            Handler.GameObjectUpdatedDelegate = null!;
+        }
+    }
 }

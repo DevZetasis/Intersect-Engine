@@ -461,6 +461,32 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.ToTable("MonsterMoves");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterGenderDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("Symbol")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterGenders");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -499,6 +525,10 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.Property<string>("LearnsetJson")
                         .HasColumnType("TEXT")
                         .HasColumnName("Learnset");
+
+                    b.Property<string>("GenderWeightsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("GenderWeights");
 
                     b.HasKey("Id");
 

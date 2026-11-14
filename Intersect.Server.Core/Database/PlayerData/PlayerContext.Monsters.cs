@@ -37,6 +37,10 @@ public abstract partial class PlayerContext
                 property.Metadata.Name.StartsWith("Ev", StringComparison.Ordinal) && !Equals(property.OriginalValue, property.CurrentValue));
             // Lowering configured EV caps must not prevent metadata/placement saves or truncate an existing profile.
             MonsterStatCalculator.ValidateEVs(entry.Entity.EVs, evsChanged ? MonsterRules : MonsterBattleRules.Generation4 with { MaxEvTotal = 1530 });
+            if (entry.Entity.GenderId == Guid.Empty ||
+                (entry.State == EntityState.Modified && entry.Property(monster => monster.GenderId).IsModified &&
+                 entry.Property(monster => monster.GenderId).OriginalValue != entry.Entity.GenderId))
+                throw new InvalidOperationException("An individual monster's gender cannot be reassigned.");
             if (entry.Entity.NatureId == Guid.Empty) throw new InvalidOperationException("Nature UUID cannot be empty; use null for neutral/unassigned.");
             if (entry.State == EntityState.Modified && entry.Properties.Any(property =>
                     (property.Metadata.Name.StartsWith("Iv", StringComparison.Ordinal) || property.Metadata.Name == nameof(MonsterInstance.NatureId)) &&

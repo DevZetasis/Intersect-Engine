@@ -341,7 +341,8 @@ public class MonsterMoveTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_moves", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterMoves();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterStatuses().TargetModel, designTime: true);
+        var genderMigration = new Intersect.Server.Migrations.MySql.Game.AddMonsterGenders();
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(genderMigration.TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -356,6 +357,11 @@ public class MonsterMoveTests
         var effectsSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
             .Generate(effectsMigration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(effectsSql, Does.Contain("ADD `Effects` longtext NULL"));
+        var genderSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(genderMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(genderSql, Does.Contain("CREATE TABLE `MonsterGenders`"));
+        Assert.That(genderSql, Does.Contain("ADD `GenderWeights` longtext NULL"));
+        Assert.That(genderSql, Does.Contain("INSERT INTO `MonsterGenders`"));
     }
     [Test]
     public void StatusDefinitionAndReferencesSurviveMigrationAndProtectDeletion()
@@ -393,6 +399,41 @@ public class MonsterMoveTests
                 db.SaveChanges();
                 Assert.That(db.MonsterStatuses, Is.Empty);
             }
+        });
+    }
+
+    [Test]
+    public void GenderMigrationSeedsEditableDefinitionsAndProtectsReferences()
+    {
+        WithDatabase(options =>
+        {
+            using (var db = new SqliteGameContext(options))
+            {
+                db.GetService<IMigrator>().Migrate("20261112000000_AddMonsterStatuses");
+                db.Database.Migrate();
+                Assert.That(db.Database.HasPendingModelChanges(), Is.False);
+                Assert.That(db.MonsterGenders.Count(), Is.EqualTo(3));
+                var male = db.MonsterGenders.Single(g => g.Id == MonsterGenderDescriptor.DefaultMale);
+                male.Name = "Solar";
+                var custom = new MonsterGenderDescriptor(Guid.NewGuid()) { Name = "Astral", Symbol = "*" };
+                db.MonsterGenders.Add(custom);
+                db.MonsterSpecies.Add(new MonsterSpeciesDescriptor(Guid.NewGuid()) { GenderWeights = new() { [custom.Id] = 100 } });
+                db.SaveChanges();
+                db.Database.Migrate();
+            }
+            using var reopened = new SqliteGameContext(options);
+            Assert.That(reopened.MonsterGenders.Single(g => g.Id == MonsterGenderDescriptor.DefaultMale).Name, Is.EqualTo("Solar"));
+            var referenced = reopened.MonsterGenders.Single(g => g.Name == "Astral");
+            var species = reopened.MonsterSpecies.Single();
+            Assert.That(species.GenderWeights[referenced.Id], Is.EqualTo(100));
+            reopened.MonsterGenders.Remove(referenced);
+            Assert.Throws<InvalidOperationException>(() => reopened.SaveChanges());
+            species.GenderWeights = MonsterGenderDescriptor.DefaultDistribution();
+            reopened.GenderReferenceExists = id => id == referenced.Id;
+            Assert.Throws<InvalidOperationException>(() => reopened.SaveChanges());
+            reopened.GenderReferenceExists = null;
+            reopened.SaveChanges();
+            Assert.That(reopened.MonsterGenders.Count(), Is.EqualTo(3));
         });
     }
 

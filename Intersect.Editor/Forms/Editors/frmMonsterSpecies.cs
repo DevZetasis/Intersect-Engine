@@ -29,6 +29,7 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkNumericUpDown _specialAttack = StatInput();
     private readonly DarkNumericUpDown _specialDefense = StatInput();
     private readonly DarkNumericUpDown _speed = StatInput();
+    private readonly FlowLayoutPanel _genderWeights = new() { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
     private readonly MonsterLearnsetEditor _learnset = new();
     private readonly DarkComboBox _primaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _secondaryType = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -81,6 +82,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.PrimaryType, _primaryType);
         AddField(Strings.MonsterSpeciesEditor.SecondaryType, _secondaryType);
         AddField(Strings.MonsterMoveEditor.Learnset, _learnset);
+        AddField("Gender Distribution", _genderWeights);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(5) };
         _btnCancel = AddButton(buttons, Strings.MonsterSpeciesEditor.Cancel, (_, _) => Close());
@@ -151,7 +153,7 @@ public sealed class FrmMonsterSpecies : EditorForm
 
     protected override void GameObjectUpdatedDelegate(GameObjectType type)
     {
-        if (type is GameObjectType.MonsterType or GameObjectType.MonsterMove) { ShowFields(); return; }
+        if (type is GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterGender) { ShowFields(); return; }
         if (type != GameObjectType.MonsterSpecies) return;
         foreach (var (id, draft) in _drafts)
         {
@@ -209,6 +211,7 @@ public sealed class FrmMonsterSpecies : EditorForm
             _speed.Value = _selected.BaseStats.Speed;
             LoadTypeChoices();
             _learnset.Bind(_selected.Learnset);
+            ShowGenderWeights(_selected);
             DrawSprite();
         }
         finally { _loading = false; }
@@ -313,9 +316,46 @@ public sealed class FrmMonsterSpecies : EditorForm
             PacketSender.SendDeleteObject(_selected);
     }
 
+    private void ShowGenderWeights(MonsterSpeciesDescriptor species)
+    {
+        foreach (var control in _genderWeights.Controls.Cast<Control>().ToArray()) control.Dispose();
+        species.GenderWeights ??= new();
+        var definitions = MonsterGenderDescriptor.Lookup.Values.Cast<MonsterGenderDescriptor>()
+            .OrderBy(gender => gender.Name).ToDictionary(gender => gender.Id, gender => gender.Name);
+        foreach (var id in species.GenderWeights.Keys) definitions.TryAdd(id, $"Missing ({id})");
+        foreach (var (id, name) in definitions)
+        {
+            var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
+            var amount = new DarkNumericUpDown
+            {
+                Width = 85, Minimum = 0, Maximum = 100000,
+                Value = Math.Clamp(species.GenderWeights.GetValueOrDefault(id), 0, 100000),
+            };
+            amount.ValueChanged += (_, _) =>
+            {
+                if (amount.Value == 0) species.GenderWeights.Remove(id);
+                else species.GenderWeights[id] = (int)amount.Value;
+            };
+            row.Controls.Add(amount);
+            row.Controls.Add(new DarkLabel { AutoSize = true, MaximumSize = new Size(200, 0), Text = name });
+            if (MonsterGenderDescriptor.Get(id) == null)
+            {
+                var remove = new DarkButton { AutoSize = true, Text = "Clear missing" };
+                remove.Click += (_, _) => { species.GenderWeights.Remove(id); ShowGenderWeights(species); };
+                row.Controls.Add(remove);
+            }
+            _genderWeights.Controls.Add(row);
+        }
+    }
+
     private void SaveSpecies(object? sender, EventArgs e)
     {
         var changed = _drafts.Values.Where(item => item.JsonData != _originals[item.Id]).ToArray();
+        if (changed.Any(item => !MonsterGenderDescriptor.ValidDistribution(item.GenderWeights, id => MonsterGenderDescriptor.Get(id) != null)))
+        {
+            DarkMessageBox.ShowWarning("Gender Distribution requires an existing gender with positive weight. Clear missing references and use weights from 0 to 100000.", Text);
+            return;
+        }
         if (changed.Any(item => !item.IsValid || item.TypeIds.Any(id => MonsterTypeDescriptor.Get(id) == null) ||
             item.Learnset.Any(entry => MonsterMoveDescriptor.Get(entry.MoveId) == null)))
         {

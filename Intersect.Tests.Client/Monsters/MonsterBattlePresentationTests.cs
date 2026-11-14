@@ -357,4 +357,20 @@ public class MonsterBattlePresentationTests
         Assert.That(started, Is.EqualTo(new[] { MonsterBattleEventKind.StatusApplied, MonsterBattleEventKind.StatusDamage, MonsterBattleEventKind.StatusRemoved }));
         Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.CommandSelection));
     }
+
+    [Test]
+    public void GenderNameSurvivesMissingGlyphAndUnspecifiedIsDistinct()
+    {
+        var id = Guid.NewGuid();
+        Assert.That(MonsterGenderText.Format(id, "Astral", "☄", null, 14), Is.EqualTo("Astral"));
+        Assert.That(MonsterGenderText.Format(null, null, null, null, 14), Is.EqualTo("Unspecified"));
+        Assert.That(MonsterGenderText.Format(id, "Genderless", "", null, 14), Is.EqualTo("Genderless"));
+        Assert.That(MonsterGenderText.Format(id, null, null, null, 14), Is.EqualTo("Unavailable"));
+        var state = State(1, Guid.NewGuid());
+        state.Player.GenderId = id;
+        state.Player.GenderName = "Astral";
+        var roundTrip = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(state));
+        Assert.That(roundTrip.Player.GenderId, Is.EqualTo(id));
+        Assert.That(roundTrip.Player.GenderName, Is.EqualTo("Astral"));
+    }
 }

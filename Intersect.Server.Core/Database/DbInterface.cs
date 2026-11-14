@@ -113,6 +113,11 @@ public static partial class DbInterface
     private static GameContext ConfigureMonsterReferences(GameContext context)
     {
         context.MoveReferenceExists = id => Intersect.Server.Monsters.MonsterMoveAssignment.IsAssigned(id, () => CreatePlayerContext());
+        context.GenderReferenceExists = id =>
+        {
+            using var players = CreatePlayerContext();
+            return players.OwnedMonsters.Any(monster => monster.GenderId == id);
+        };
         context.StatusReferenceExists = id =>
         {
             using var players = CreatePlayerContext();
@@ -740,6 +745,9 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 MonsterTypeDescriptor.Lookup.Clear();
                 break;
+            case GameObjectType.MonsterGender:
+                MonsterGenderDescriptor.Lookup.Clear();
+                break;
             case GameObjectType.MonsterStatus:
                 MonsterStatusDescriptor.Lookup.Clear();
                 break;
@@ -861,6 +869,9 @@ public static partial class DbInterface
                         {
                             MonsterTypeDescriptor.Lookup.Set(monsterType.Id, monsterType);
                         }
+                        break;
+                    case GameObjectType.MonsterGender:
+                        foreach (var gender in context.MonsterGenders) MonsterGenderDescriptor.Lookup.Set(gender.Id, gender);
                         break;
                     case GameObjectType.MonsterStatus:
                         foreach (var status in context.MonsterStatuses) MonsterStatusDescriptor.Lookup.Set(status.Id, status);
@@ -1174,6 +1185,9 @@ public static partial class DbInterface
             case GameObjectType.MonsterType:
                 dbObj = new MonsterTypeDescriptor(predefinedid);
                 break;
+            case GameObjectType.MonsterGender:
+                dbObj = new MonsterGenderDescriptor(predefinedid);
+                break;
             case GameObjectType.MonsterStatus:
                 dbObj = new MonsterStatusDescriptor(predefinedid);
                 break;
@@ -1298,6 +1312,10 @@ public static partial class DbInterface
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Add((MonsterTypeDescriptor)dbObj);
                         MonsterTypeDescriptor.Lookup.Set(dbObj.Id, dbObj);
+                        break;
+                    case GameObjectType.MonsterGender:
+                        context.MonsterGenders.Add((MonsterGenderDescriptor)dbObj);
+                        MonsterGenderDescriptor.Lookup.Set(dbObj.Id, dbObj);
                         break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Add((MonsterStatusDescriptor)dbObj);
@@ -1428,7 +1446,7 @@ public static partial class DbInterface
 
     public static void DeleteGameObject(IDatabaseObject gameObject)
     {
-        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor)
+        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor)
         {
             lock (Intersect.Server.Monsters.MonsterTypeRules.ContentGate) DeleteGameObjectCore(gameObject);
         }
@@ -1465,6 +1483,9 @@ public static partial class DbInterface
                                 context.MonsterSpecies.AsNoTracking().ToArray(), context.MonsterTypes.AsNoTracking().ToArray(), context.MonsterMoves.AsNoTracking().ToArray()))
                             throw new InvalidOperationException("This monster type is referenced and cannot be deleted.");
                         context.MonsterTypes.Remove((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterGender:
+                        context.MonsterGenders.Remove((MonsterGenderDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Remove((MonsterStatusDescriptor)gameObject);
@@ -1655,6 +1676,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterType:
                         context.MonsterTypes.Update((MonsterTypeDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterGender:
+                        context.MonsterGenders.Update((MonsterGenderDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Update((MonsterStatusDescriptor)gameObject);

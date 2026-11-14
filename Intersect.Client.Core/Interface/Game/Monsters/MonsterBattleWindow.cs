@@ -265,16 +265,22 @@ public sealed class MonsterBattleWindow : Window
             .Select(stage => $"{stage.Item1} {stage.Item2:+0;-0}"));
     }
 
+    private static string ActorLabel(MonsterBattleActorView actor, Label label)
+    {
+        var gender = MonsterGenderText.Format(actor.GenderId, actor.GenderName, actor.GenderSymbol, label.Font, label.FontSize);
+        return $"{Strings.MonsterBattle.Actor.ToString(Short(actor.Name, 26), actor.Level)}  [{Short(gender, 24)}]";
+    }
+
     private void RefreshControls()
     {
         if (_playback.State is not { } state) return;
         var player = _playback.DisplayedPlayer ?? state.Player;
         LoadPlayerArt();
-        _playerName.Text = Strings.MonsterBattle.Actor.ToString(Short(player.Name, 60), player.Level);
+        _playerName.Text = ActorLabel(player, _playerName);
         var playerStages = StageSummary(_playback.PlayerStages);
         var opponentStages = StageSummary(_playback.OpponentStages);
         _playerName.SetToolTipText(playerStages.Length == 0 ? player.Name : $"{player.Name} — {playerStages}");
-        _opponentName.Text = Strings.MonsterBattle.Actor.ToString(Short(state.Opponent.Name, 60), state.Opponent.Level); _opponentName.SetToolTipText(opponentStages.Length == 0 ? state.Opponent.Name : $"{state.Opponent.Name} — {opponentStages}");
+        _opponentName.Text = ActorLabel(state.Opponent, _opponentName); _opponentName.SetToolTipText(opponentStages.Length == 0 ? state.Opponent.Name : $"{state.Opponent.Name} — {opponentStages}");
         HP(_playerHP, _playerHPValue, _playback.PlayerHP, player.MaximumHP);
         HP(_opponentHP, _opponentHPValue, _playback.OpponentHP, state.Opponent.MaximumHP);
         if (!string.IsNullOrEmpty(_playback.PlayerStatus)) _playerHPValue.Text += $"  [{Short(_playback.PlayerStatus, 20)}]";

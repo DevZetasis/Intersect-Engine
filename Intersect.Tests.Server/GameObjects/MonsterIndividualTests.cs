@@ -212,6 +212,7 @@ public class MonsterIndividualTests
             Assert.That(monster.IVs, Is.EqualTo(new MonsterStatValues()));
             Assert.That(monster.EVs, Is.EqualTo(new MonsterStatValues()));
             Assert.That(monster.NatureId, Is.Null);
+            Assert.That(monster.GenderId, Is.Null);
         }
         Assert.That(Service(new ControlledMonsterRandom()).Grant(_owner, _species, request).Id, Is.EqualTo(id));
     }
@@ -242,12 +243,17 @@ public class MonsterIndividualTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused_attrs", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterStatus().TargetModel, designTime: true);
+        var genderMigration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterGender();
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(genderMigration.TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(sql, Does.Contain("ADD `NatureId` char(36)"));
         Assert.That(sql, Does.Contain("ADD `IvHP` int NOT NULL DEFAULT 0"));
+        var genderSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(genderMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(genderSql, Does.Contain("ADD `GenderId` char(36)"));
+        Assert.That(genderSql, Does.Not.Contain("NOT NULL"));
         Assert.That(sql, Does.Not.Contain("DROP TABLE"));
     }
     [Test]
@@ -381,5 +387,65 @@ public class MonsterIndividualTests
         public override DatabaseType DatabaseType => DatabaseType.MySql;
         protected override void OnConfiguringProvider(DbContextOptionsBuilder builder, string connectionString) =>
             builder.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36)));
+    }
+
+    [Test]
+    public void WeightedGenderSelectionUsesStableUuidBucketsAndExcludesZeroAndMissing()
+    {
+        var first = MonsterGenderDescriptor.DefaultMale;
+        var second = MonsterGenderDescriptor.DefaultFemale;
+        var custom = Guid.Parse("ffffffff-0000-4000-8000-000000000001");
+        var species = new MonsterSpeciesDescriptor(Guid.NewGuid())
+        {
+            GenderWeights = new() { [first] = 3, [second] = 0, [custom] = 2 },
+        };
+        Assert.That(MonsterAttributeGeneration.SelectGender(species, new ControlledMonsterRandom(2), _ => true), Is.EqualTo(first));
+        Assert.That(MonsterAttributeGeneration.SelectGender(species, new ControlledMonsterRandom(3), _ => true), Is.EqualTo(custom));
+        Assert.That(MonsterAttributeGeneration.SelectGender(species, new ControlledMonsterRandom(0), id => id == custom), Is.EqualTo(custom));
+        Assert.That(MonsterAttributeGeneration.SelectGender(species, new ControlledMonsterRandom(), _ => false), Is.Null);
+        Assert.That(MonsterGenderDescriptor.ValidDistribution(species.GenderWeights, _ => true), Is.True);
+        Assert.That(MonsterGenderDescriptor.ValidDistribution(new() { [first] = 0 }, _ => true), Is.False);
+        Assert.That(MonsterGenderDescriptor.ValidDistribution(new() { [first] = 100001 }, _ => true), Is.False);
+        var copy = new MonsterSpeciesDescriptor(Guid.NewGuid());
+        copy.Load(species.JsonData);
+        Assert.That(copy.GenderWeights, Is.EqualTo(species.GenderWeights));
+    }
+
+    [Test]
+    public void GenderIsPermanentAcrossGrantRetryAndStorageAndLegacyRemainsNull()
+    {
+        var gender = new MonsterGenderDescriptor(Guid.NewGuid()) { Name = "Astral", Symbol = "*" };
+        var species = new MonsterSpeciesDescriptor(_species) { GenderWeights = new() { [gender.Id] = 100 } };
+        MonsterGenderDescriptor.Lookup.Set(gender.Id, gender);
+        MonsterSpeciesDescriptor.Lookup.Set(species.Id, species);
+        try
+        {
+            var request = Guid.NewGuid();
+            var created = Service(new ControlledMonsterRandom(0, 1, 2, 3, 4, 5, 0)).Grant(_owner, _species, request);
+            using var db = Context();
+            var original = db.OwnedMonsters.Single();
+            Assert.That(original.GenderId, Is.EqualTo(gender.Id));
+            Assert.That(MonsterRosterDetails.Create(original, species, null, MonsterBattleRules.Generation4).GenderName, Is.EqualTo("Astral"));
+            var service = Service(new ControlledMonsterRandom());
+            species.GenderWeights = MonsterGenderDescriptor.DefaultDistribution();
+            Assert.That(service.Grant(_owner, _species, request).Id, Is.EqualTo(created.Id));
+            service.Move(_owner, created.Id, original.Revision, MonsterLocation.Storage);
+            using var reopened = Context();
+            var saved = reopened.OwnedMonsters.Single();
+            Assert.That(saved.GenderId, Is.EqualTo(gender.Id));
+            Assert.That(saved.IVs, Is.EqualTo(original.IVs));
+            Assert.That(saved.CurrentHP, Is.EqualTo(original.CurrentHP));
+            reopened.Entry(saved).Property(monster => monster.GenderId).CurrentValue = null;
+            Assert.Throws<InvalidOperationException>(() => reopened.SaveChanges());
+            reopened.ChangeTracker.Clear();
+            reopened.Database.ExecuteSqlInterpolated($"UPDATE OwnedMonsters SET GenderId = NULL WHERE Id = {created.Id}");
+            Assert.That(service.Grant(_owner, _species, request).Id, Is.EqualTo(created.Id));
+            Assert.That(reopened.OwnedMonsters.Single().GenderId, Is.Null);
+        }
+        finally
+        {
+            MonsterSpeciesDescriptor.Lookup.DeleteAt(species.Id);
+            MonsterGenderDescriptor.Lookup.DeleteAt(gender.Id);
+        }
     }
 }

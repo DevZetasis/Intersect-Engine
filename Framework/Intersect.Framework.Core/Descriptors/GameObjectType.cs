@@ -87,4 +87,7 @@ public enum GameObjectType
 
     [GameObjectInfo(typeof(MonsterStatusDescriptor), "monster_statuses")]
     MonsterStatus = 23,
+
+    [GameObjectInfo(typeof(MonsterGenderDescriptor), "monster_genders")]
+    MonsterGender = 24,
 }

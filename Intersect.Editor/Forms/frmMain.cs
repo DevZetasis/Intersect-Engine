@@ -101,6 +101,9 @@ public partial class FrmMain : Form
         var statusMenu = new ToolStripMenuItem("Monster Status Editor");
         statusMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterStatus);
         contentEditorsToolStripMenuItem.DropDownItems.Add(statusMenu);
+        var genderMenu = new ToolStripMenuItem("Monster Gender Editor");
+        genderMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterGender);
+        contentEditorsToolStripMenuItem.DropDownItems.Add(genderMenu);
 
         dockLeft.Theme = new VS2015DarkTheme();
         Globals.MapListWindow = new FrmMapList();
@@ -1641,6 +1644,11 @@ public partial class FrmMain : Form
                         mItemEditor.Show();
                     }
 
+                    break;
+                case GameObjectType.MonsterGender:
+                    var genderEditor = new FrmMonsterGender();
+                    genderEditor.InitEditor();
+                    genderEditor.Show();
                     break;
                 case GameObjectType.MonsterStatus:
                     var statusEditor = new FrmMonsterStatus();
