@@ -362,7 +362,7 @@ public class MonsterBattlePresentationTests
     public void GenderNameSurvivesMissingGlyphAndUnspecifiedIsDistinct()
     {
         var id = Guid.NewGuid();
-        Assert.That(MonsterGenderText.Format(id, "Astral", "☄", null, 14), Is.EqualTo("Astral"));
+        Assert.That(MonsterGenderText.Format(id, "Astral", "â˜„", null, 14), Is.EqualTo("Astral"));
         Assert.That(MonsterGenderText.Format(null, null, null, null, 14), Is.EqualTo("Unspecified"));
         Assert.That(MonsterGenderText.Format(id, "Genderless", "", null, 14), Is.EqualTo("Genderless"));
         Assert.That(MonsterGenderText.Format(id, null, null, null, 14), Is.EqualTo("Unavailable"));
@@ -372,5 +372,27 @@ public class MonsterBattlePresentationTests
         var roundTrip = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(state));
         Assert.That(roundTrip.Player.GenderId, Is.EqualTo(id));
         Assert.That(roundTrip.Player.GenderName, Is.EqualTo("Astral"));
+    }
+    [Test]
+    public void WildEscapeSnapshotKeepsOpponentAndReturnsToResultImmediately()
+    {
+        var revision = Guid.NewGuid();
+        var open = State(1, revision);
+        open.IsWild = true;
+        var model = new MonsterBattlePlayback();
+        Assert.That(model.Accept(open), Is.True);
+        var escape = State(2, Guid.NewGuid());
+        escape.IsWild = true;
+        escape.BattleId = open.BattleId;
+        escape.Opponent.Id = open.Opponent.Id;
+        escape.PreviousRevision = revision;
+        escape.Outcome = MonsterBattleOutcome.Escaped;
+        escape.Events = [new() { Kind = MonsterBattleEventKind.BattleFinished, Text = "Escaped" }];
+        var packet = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(
+            MessagePack.MessagePackSerializer.Serialize(escape));
+        Assert.That(packet.IsWild, Is.True);
+        Assert.That(model.Accept(packet), Is.True);
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.ShowingResult));
+        Assert.That(model.State!.Opponent.Id, Is.EqualTo(open.Opponent.Id));
     }
 }

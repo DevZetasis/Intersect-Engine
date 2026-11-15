@@ -202,56 +202,7 @@ internal sealed partial class NetworkedPacketHandler
                 return;
             }
 
-            map.Load(packet.JsonData, map.Revision + 1);
-            MapList.List.UpdateMap(packet.MapId);
-
-            //Event Fixing
-            var removedEvents = new List<Guid>();
-            foreach (var id in map.EventIds)
-            {
-                if (!map.LocalEvents.ContainsKey(id))
-                {
-                    var evt = EventDescriptor.Get(id);
-                    if (evt != null)
-                    {
-                        DbInterface.DeleteGameObject(evt);
-                    }
-
-                    removedEvents.Add(id);
-                }
-            }
-
-            foreach (var id in removedEvents)
-            {
-                map.EventIds.Remove(id);
-            }
-
-            foreach (var evt in map.LocalEvents)
-            {
-                var dbObj = EventDescriptor.Get(evt.Key);
-                if (dbObj == null)
-                {
-                    dbObj = (EventDescriptor)DbInterface.AddGameObject(GameObjectType.Event, evt.Key);
-                }
-
-                dbObj.Load(evt.Value.JsonData);
-                DbInterface.SaveGameObject(dbObj);
-                if (!map.EventIds.Contains(evt.Key))
-                {
-                    map.EventIds.Add(evt.Key);
-                }
-            }
-
-            map.LocalEvents.Clear();
-
-            if (packet.TileData != null && map.TileData != null)
-            {
-                map.TileData = packet.TileData;
-            }
-
-            map.AttributeData = packet.AttributeData;
-
-            DbInterface.SaveGameObject(map);
+            if (!SaveEditedMap(client, packet, map)) return;
 
             map.Initialize();
             var players = new List<Player>();
@@ -268,6 +219,84 @@ internal sealed partial class NetworkedPacketHandler
 
             PacketSender.SendMap(client, packet.MapId, true); //Sends map to everyone/everything in proximity
             PacketSender.SendMapListToAll();
+        }
+
+        private static bool SaveEditedMap(Client client, Network.Packets.Editor.MapUpdatePacket packet, MapController map)
+        {
+            lock (MonsterTypeRules.ContentGate)
+            {
+                MapEncounters? encounters;
+                try
+                {
+                    var payload = Newtonsoft.Json.Linq.JObject.Parse(packet.JsonData);
+                    var token = payload.GetValue(nameof(MapDescriptor.Encounters), StringComparison.OrdinalIgnoreCase);
+                    encounters = token == null ? new() : token.ToObject<MapEncounters>();
+                }
+                catch (Newtonsoft.Json.JsonException)
+                {
+                    encounters = null;
+                }
+
+                if (encounters == null || !encounters.IsValid(Options.Instance.Map.MapWidth, Options.Instance.Map.MapHeight,
+                    id => MonsterEncounterTableDescriptor.Get(id) != null))
+                {
+                    PacketSender.SendError(client, "Correct the map's encounter settings or remove missing table references before saving.", "Map Encounters");
+                    return false;
+                }
+
+                map.Load(packet.JsonData, map.Revision + 1);
+                map.Encounters = encounters;
+                MapList.List.UpdateMap(packet.MapId);
+
+                //Event Fixing
+                var removedEvents = new List<Guid>();
+                foreach (var id in map.EventIds)
+                {
+                    if (!map.LocalEvents.ContainsKey(id))
+                    {
+                        var evt = EventDescriptor.Get(id);
+                        if (evt != null)
+                        {
+                            DbInterface.DeleteGameObject(evt);
+                        }
+
+                        removedEvents.Add(id);
+                    }
+                }
+
+                foreach (var id in removedEvents)
+                {
+                    map.EventIds.Remove(id);
+                }
+
+                foreach (var evt in map.LocalEvents)
+                {
+                    var dbObj = EventDescriptor.Get(evt.Key);
+                    if (dbObj == null)
+                    {
+                        dbObj = (EventDescriptor)DbInterface.AddGameObject(GameObjectType.Event, evt.Key);
+                    }
+
+                    dbObj.Load(evt.Value.JsonData);
+                    DbInterface.SaveGameObject(dbObj);
+                    if (!map.EventIds.Contains(evt.Key))
+                    {
+                        map.EventIds.Add(evt.Key);
+                    }
+                }
+
+                map.LocalEvents.Clear();
+
+                if (packet.TileData != null && map.TileData != null)
+                {
+                    map.TileData = packet.TileData;
+                }
+
+                map.AttributeData = packet.AttributeData;
+
+                DbInterface.SaveGameObject(map);
+                return true;
+            }
         }
 
         //CreateMapPacket
@@ -824,7 +853,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -844,7 +873,21 @@ internal sealed partial class NetworkedPacketHandler
                 PacketSender.SendError(client, "Create a monster type before creating moves.", "Monster Move");
                 return;
             }
-            var obj = DbInterface.AddGameObject(type);
+            IDatabaseObject obj;
+            if (type == GameObjectType.MonsterEncounterTable && packet.SourceId is { } sourceId)
+            {
+                var source = MonsterEncounterTableDescriptor.Get(sourceId);
+                if (source == null || source.ValidationError(Options.Instance.Monsters.Battle.MaxLevel,
+                    id => MonsterSpeciesDescriptor.Get(id) != null) != null)
+                {
+                    PacketSender.SendError(client, "Save a valid encounter table before duplicating it.", "Monster Encounter Table");
+                    return;
+                }
+                var copy = MonsterEncounterTableDescriptor.Copy(Guid.NewGuid(), source);
+                copy.Name = copy.Name[..Math.Min(copy.Name.Length, 113)] + " (copy)";
+                obj = DbInterface.AddGameObject(type, copy);
+            }
+            else obj = DbInterface.AddGameObject(type);
 
             var changed = false;
             switch(type)
@@ -887,7 +930,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.Animation)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -937,6 +980,18 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterEncounterTable:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    {
+                        if (gameDb.Maps.AsNoTracking().Select(item => item.EncountersJson).AsEnumerable()
+                            .Any(json => MapEncounters.Parse(json).References(id)))
+                        {
+                            PacketSender.SendError(client, "Remove this table from all maps before deleting it.", "Monster Encounter Table");
+                            return;
+                        }
+                    }
+                    obj = MonsterEncounterTableDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterGender:
                     using (var gameDb = DbInterface.CreateGameContext())
@@ -1004,6 +1059,12 @@ internal sealed partial class NetworkedPacketHandler
                             PacketSender.SendError(client, "This species is referenced by owned monsters and cannot be deleted.", "Monster Species");
                             return;
                         }
+                    }
+                    if (MonsterEncounterTableDescriptor.Lookup.Values.Cast<MonsterEncounterTableDescriptor>().Any(table =>
+                        table.Entries?.Any(row => row?.SpeciesId == id) == true))
+                    {
+                        PacketSender.SendError(client, "Remove this species from encounter tables before deleting it.", "Monster Species");
+                        return;
                     }
                     obj = MonsterSpeciesDescriptor.Get(id);
                     break;
@@ -1115,7 +1176,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1147,6 +1208,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterEncounterTable:
+                    obj = MonsterEncounterTableDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterGender:
                     obj = MonsterGenderDescriptor.Get(id);
@@ -1267,7 +1331,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterEncounterTableDescriptor)
                     {
                         try
                         {
@@ -1285,6 +1349,14 @@ internal sealed partial class NetworkedPacketHandler
                                 var candidate = new MonsterNatureDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterNatureRules.Validate(candidate);
+                            }
+                            else if (obj is MonsterEncounterTableDescriptor)
+                            {
+                                var candidate = new MonsterEncounterTableDescriptor(id);
+                                candidate.Load(packet.Data);
+                                if (candidate.ValidationError(Options.Instance.Monsters.Battle.MaxLevel,
+                                    speciesId => MonsterSpeciesDescriptor.Get(speciesId) != null) is { } error)
+                                    throw new InvalidOperationException(error);
                             }
                             else if (obj is MonsterGenderDescriptor)
                             {

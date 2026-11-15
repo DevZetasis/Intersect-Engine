@@ -10,6 +10,19 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     private readonly Dictionary<Guid, MonsterBattleSession> _active = new();
     private long _sequence;
     public bool HasActive(Guid owner) { lock (SyncRoot) return _active.ContainsKey(owner); }
+    public bool HasActiveWild(Guid owner)
+    {
+        lock (SyncRoot) return _active.TryGetValue(owner, out var session) && session.Wild != null;
+    }
+
+    public (Guid? TableId, GeneratedWildMonster Monster)? InspectWild(Guid owner)
+    {
+        lock (SyncRoot)
+            return _active.TryGetValue(owner, out var session) && session.Wild is { } wild
+                ? (session.EncounterTableId, wild)
+                : null;
+    }
+
     public bool ReservesMonster(Guid monster) { lock (SyncRoot) return _active.Values.Any(s => s.Reserves(monster)); }
     public bool ReservesStatus(Guid status)
     {
@@ -24,7 +37,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
             var session = create();
             if (session.OwnerId != owner) throw new InvalidOperationException("Wrong battle owner.");
             _active.Add(owner, session);
-            if (!Send(session)) throw new InvalidOperationException("Practice start failed while sending battle state.");
+            if (!Send(session)) throw new InvalidOperationException("Battle start failed while sending battle state.");
             return session.Id;
         }
     }
@@ -70,7 +83,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     public void CancelAll()
     {
         lock (SyncRoot)
-            foreach (var owner in _active.Keys.ToArray()) Cancel(owner, "Practice battle cancelled: server shutdown.");
+            foreach (var owner in _active.Keys.ToArray()) Cancel(owner, "Monster battle cancelled: server shutdown.");
     }
     public bool CancelBattle(Guid battleId)
     {
@@ -78,7 +91,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
         {
             var session = _active.Values.SingleOrDefault(session => session.Id == battleId);
             if (session == null) return false;
-            Cancel(session.OwnerId, "Practice battle cancelled by server operator.");
+            Cancel(session.OwnerId, "Monster battle cancelled by server operator.");
             return true;
         }
     }
@@ -87,7 +100,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
         try { publish(session.OwnerId, session.Snapshot(checked(++_sequence), rejection)); return true; }
         catch (Exception exception)
         {
-            session.Cancel("Practice cancelled because battle state could not be delivered.");
+            session.Cancel("Battle cancelled because battle state could not be delivered.");
             _active.Remove(session.OwnerId);
             try
             {

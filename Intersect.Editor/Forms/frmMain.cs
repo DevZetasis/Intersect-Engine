@@ -104,6 +104,9 @@ public partial class FrmMain : Form
         var genderMenu = new ToolStripMenuItem("Monster Gender Editor");
         genderMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterGender);
         contentEditorsToolStripMenuItem.DropDownItems.Add(genderMenu);
+        var encounterMenu = new ToolStripMenuItem("Monster Encounter Table Editor");
+        encounterMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterEncounterTable);
+        contentEditorsToolStripMenuItem.DropDownItems.Add(encounterMenu);
 
         dockLeft.Theme = new VS2015DarkTheme();
         Globals.MapListWindow = new FrmMapList();
@@ -1644,6 +1647,11 @@ public partial class FrmMain : Form
                         mItemEditor.Show();
                     }
 
+                    break;
+                case GameObjectType.MonsterEncounterTable:
+                    var encounterEditor = new FrmMonsterEncounterTable();
+                    encounterEditor.InitEditor();
+                    encounterEditor.Show();
                     break;
                 case GameObjectType.MonsterGender:
                     var genderEditor = new FrmMonsterGender();

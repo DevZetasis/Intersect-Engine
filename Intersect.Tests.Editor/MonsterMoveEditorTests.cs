@@ -275,4 +275,44 @@ public class MonsterMoveEditorTests
             Handler.GameObjectUpdatedDelegate = null!;
         }
     }
+    [Test]
+    public void EncounterEditorUpdatesWeightsAndCopiesOrderedDraftsWithoutChangingCanonicalTables()
+    {
+        if (Options.Instance == null) Options.LoadFromServer("{}");
+        var species = new MonsterSpeciesDescriptor(Guid.NewGuid()) { Name = "Mossling" };
+        var first = new MonsterEncounterTableDescriptor(Guid.NewGuid())
+        {
+            Name = "A Field", Enabled = true, Entries = [new(species.Id, 50, 2, 3), new(species.Id, 50, 4, 5)],
+        };
+        var second = new MonsterEncounterTableDescriptor(Guid.NewGuid()) { Name = "B Field" };
+        MonsterSpeciesDescriptor.Lookup.Set(species.Id, species);
+        MonsterEncounterTableDescriptor.Lookup.Set(first.Id, first);
+        MonsterEncounterTableDescriptor.Lookup.Set(second.Id, second);
+        try
+        {
+            using var editor = new FrmMonsterEncounterTable();
+            editor.InitEditor();
+            Invoke(editor, "SelectTable", first.Id);
+            var rows = Field<DataGridView>(editor, "_entries").Rows;
+            rows[0].Cells[1].Value = 150;
+            Assert.That((string)rows[0].Cells[4].Value, Does.Contain("75"));
+            Invoke(editor, "CopyTable", null, EventArgs.Empty);
+            Invoke(editor, "SelectTable", second.Id);
+            Invoke(editor, "PasteTable", null, EventArgs.Empty);
+            var draft = Field<MonsterEncounterTableDescriptor>(editor, "_selected");
+            Assert.That(draft.Id, Is.EqualTo(second.Id));
+            Assert.That(draft.Entries.Select(entry => entry.Weight), Is.EqualTo(new[] { 150, 50 }));
+            Assert.That(draft.Entries.Select(entry => entry.MinimumLevel), Is.EqualTo(new[] { 2, 4 }));
+            Invoke(editor, "UndoTable", null, EventArgs.Empty);
+            Assert.That(draft.Entries, Is.Empty);
+            Assert.That(first.Entries[0].Weight, Is.EqualTo(50));
+            Assert.That(second.Entries, Is.Empty);
+        }
+        finally
+        {
+            MonsterSpeciesDescriptor.Lookup.DeleteAt(species.Id);
+            MonsterEncounterTableDescriptor.Lookup.DeleteAt(first.Id);
+            MonsterEncounterTableDescriptor.Lookup.DeleteAt(second.Id);
+        }
+    }
 }

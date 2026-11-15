@@ -42,6 +42,6 @@ internal sealed class CancelMonsterBattleCommand : ServerCommand
     {
         if (!Guid.TryParse(result.Find(FindArgument<VariableArgument<string>>(0)), out var battle))
         { Console.WriteLine("Usage: cancelmonsterbattle <battle-UUID>"); return; }
-        Console.WriteLine(MonsterPracticeBattles.Registry.CancelBattle(battle) ? "Practice battle cancelled." : "Active battle was not found.");
+        Console.WriteLine(MonsterPracticeBattles.Registry.CancelBattle(battle) ? "Monster battle cancelled." : "Active battle was not found.");
     }
 }

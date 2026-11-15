@@ -1268,6 +1268,7 @@ public abstract partial class Entity : IEntity
                         }
                     }
 
+                    if (this is Player slidingPlayer) slidingPlayer.MarkEncounterTransition();
                     var dash = new Dash(this, 1, Dir);
                 }
             }

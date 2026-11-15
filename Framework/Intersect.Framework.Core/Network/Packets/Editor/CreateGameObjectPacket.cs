@@ -19,4 +19,7 @@ public partial class CreateGameObjectPacket : EditorPacket
     [Key(0)]
     public GameObjectType Type { get; set; }
 
+    [Key(1)]
+    public Guid? SourceId { get; set; }
+
 }

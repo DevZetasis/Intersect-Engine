@@ -486,6 +486,43 @@ namespace Intersect.Server.Migrations.MySql.Game
                     b.ToTable("MonsterMoves");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterEncounterTableDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .UseCollation("ascii_general_ci");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("longtext")
+                        .HasColumnOrder(0);
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Rate")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Cooldown")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EntriesJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Entries");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterEncounterTables");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterGenderDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1603,6 +1640,10 @@ namespace Intersect.Server.Migrations.MySql.Game
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.Property<string>("EncountersJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("Encounters");
 
                     b.ToTable("Maps");
                 });

@@ -479,7 +479,7 @@ public partial class Player : Entity
         LastOnline = DateTime.Now;
         lock (Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.SyncRoot)
         {
-            Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Cancel(Id, "Practice forfeited: client disconnected or logged out.", disconnect: true);
+            Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Cancel(Id, "Monster battle ended: client disconnected or logged out.", disconnect: true);
             Client = default;
         }
 
@@ -2052,6 +2052,8 @@ public partial class Player : Entity
             return;
         }
         #endregion
+
+        MarkEncounterTransition();
 
         // If we are leaving the overworld to go to a new instance, save the overworld location
         if (!fromLogin && InstanceType == MapInstanceType.Overworld && mapInstanceType != MapInstanceType.Overworld && mapInstanceType != null)

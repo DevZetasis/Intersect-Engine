@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using Intersect.Collections;
 using Intersect.Compression;
 using Intersect.Config;
@@ -93,6 +93,7 @@ public partial class MapDescriptor : DatabaseObject<MapDescriptor>
             lock (mapDescriptor.MapLock ?? throw new ArgumentNullException(nameof(mapDescriptor.MapLock), nameof(mapDescriptor)))
             {
                 Name = mapDescriptor.Name;
+                Encounters = mapDescriptor.Encounters?.Copy() ?? new();
                 Brightness = mapDescriptor.Brightness;
                 IsIndoors = mapDescriptor.IsIndoors;
                 if (Layers != null && mapDescriptor.Layers != null)

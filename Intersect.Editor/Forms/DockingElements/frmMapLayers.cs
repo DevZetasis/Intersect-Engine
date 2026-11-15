@@ -60,6 +60,14 @@ public partial class FrmMapLayers : DockContent
         InitializeComponent();
         Icon = Program.Icon;
 
+        var encounterButton = new DarkUI.Controls.DarkButton
+        {
+            Text = "Paint Encounters", Dock = DockStyle.Bottom, Height = 29,
+        };
+        encounterButton.Click += (_, _) => MapEncounterEditor.Open(this);
+        pnlAttributes.Controls.Add(encounterButton);
+        encounterButton.BringToFront();
+
         mMapLayers.Add(picLayer1);
         mMapLayers.Add(picLayer2);
         mMapLayers.Add(picLayer3);

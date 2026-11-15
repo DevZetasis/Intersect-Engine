@@ -1,6 +1,9 @@
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.Animations;
 using Intersect.Server.Monsters;
+using Intersect.Server.Maps;
+using Intersect.Framework.Core.GameObjects.Maps;
+using Intersect.Config;
 using Microsoft.EntityFrameworkCore;
 
 namespace Intersect.Server.Database.GameData;
@@ -130,16 +133,88 @@ public abstract partial class GameContext
                 throw new InvalidOperationException("This animation is referenced by monster moves or statuses.");
         }
     }
+    private void ValidateEncounters()
+    {
+        var tables = ChangeTracker.Entries<MonsterEncounterTableDescriptor>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToArray();
+        var removedSpecies = ChangeTracker.Entries<MonsterSpeciesDescriptor>()
+            .Where(entry => entry.State == EntityState.Deleted).Select(entry => entry.Entity.Id).ToHashSet();
+        var changedMaps = ChangeTracker.Entries<MapController>()
+            .Where(entry => entry.State == EntityState.Added ||
+                entry.State == EntityState.Modified && entry.Property(map => map.EncountersJson).IsModified).ToArray();
+
+        if (tables.Length > 0 || removedSpecies.Count > 0)
+        {
+            var tableCatalog = MonsterEncounterTables.AsNoTracking().ToDictionary(table => table.Id);
+            foreach (var entry in tables)
+            {
+                if (entry.State == EntityState.Deleted) tableCatalog.Remove(entry.Entity.Id);
+                else tableCatalog[entry.Entity.Id] = entry.Entity;
+            }
+
+            if (removedSpecies.Count > 0 && tableCatalog.Values.Any(table =>
+                table.Entries?.Any(row => row != null && removedSpecies.Contains(row.SpeciesId)) == true))
+                throw new InvalidOperationException("This species is referenced by an encounter table.");
+
+            var deletedTables = tables.Where(entry => entry.State == EntityState.Deleted)
+                .Select(entry => entry.Entity.Id).ToArray();
+            if (deletedTables.Length > 0)
+            {
+                var maps = Maps.AsNoTracking().Select(map => new { map.Id, map.EncountersJson }).AsEnumerable()
+                    .ToDictionary(map => map.Id, map => MapEncounters.Parse(map.EncountersJson));
+                foreach (var entry in ChangeTracker.Entries<MapController>())
+                {
+                    if (entry.State == EntityState.Deleted) maps.Remove(entry.Entity.Id);
+                    else maps[entry.Entity.Id] = entry.Entity.Encounters;
+                }
+                if (maps.Values.Any(encounters => deletedTables.Any(id => encounters?.References(id) == true)))
+                    throw new InvalidOperationException("This encounter table is assigned to a map or painted tile.");
+            }
+
+            if (tables.Any(entry => entry.State != EntityState.Deleted))
+            {
+                var speciesIds = MonsterSpecies.AsNoTracking().Select(species => species.Id).ToHashSet();
+                foreach (var entry in ChangeTracker.Entries<MonsterSpeciesDescriptor>())
+                {
+                    if (entry.State == EntityState.Deleted) speciesIds.Remove(entry.Entity.Id);
+                    else speciesIds.Add(entry.Entity.Id);
+                }
+                foreach (var entry in tables.Where(entry => entry.State != EntityState.Deleted))
+                    if (entry.Entity.ValidationError(Options.Instance.Monsters.Battle.MaxLevel, speciesIds.Contains) is { } error)
+                        throw new InvalidOperationException(error);
+            }
+        }
+
+        foreach (var entry in changedMaps)
+        {
+            var encounters = entry.Entity.Encounters;
+            if (encounters == null || encounters.Mode == MapEncounterMode.Disabled &&
+                encounters.DefaultTableId == Guid.Empty && encounters.Rate == null && encounters.Tiles?.Count == 0)
+                continue;
+
+            var ids = MonsterEncounterTables.AsNoTracking().Select(table => table.Id).ToHashSet();
+            foreach (var table in tables)
+            {
+                if (table.State == EntityState.Deleted) ids.Remove(table.Entity.Id);
+                else ids.Add(table.Entity.Id);
+            }
+            if (!encounters.IsValid(Options.Instance.Map.MapWidth, Options.Instance.Map.MapHeight, ids.Contains))
+                throw new InvalidOperationException("Invalid encounter settings or missing encounter table.");
+        }
+    }
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ChangeTracker.DetectChanges();
         if (!ChangeTracker.Entries().Any(entry => (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted) &&
-                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterNatureDescriptor ||
+                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterNatureDescriptor or MonsterEncounterTableDescriptor ||
+                 entry.Entity is MapController && (entry.State == EntityState.Added || entry.Property(nameof(MapController.EncountersJson)).IsModified) ||
                  (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor))))
             return base.SaveChanges(acceptAllChangesOnSuccess);
         lock (MonsterTypeRules.ContentGate)
         {
             ValidateMonsterContent();
+            ValidateEncounters();
             return base.SaveChanges(acceptAllChangesOnSuccess);
         }
     }

@@ -563,6 +563,18 @@ internal sealed partial class PacketHandler
                     MonsterGenderDescriptor.Lookup.Set(id, species);
                 }
                 break;
+            case GameObjectType.MonsterEncounterTable:
+                if (deleted)
+                {
+                    MonsterEncounterTableDescriptor.Lookup.DeleteAt(id);
+                }
+                else
+                {
+                    var table = new MonsterEncounterTableDescriptor(id);
+                    table.Load(json);
+                    MonsterEncounterTableDescriptor.Lookup.Set(id, table);
+                }
+                break;
             case GameObjectType.MonsterStatus:
                 if (deleted)
                 {

@@ -2,7 +2,7 @@ using MessagePack;
 
 namespace Intersect.Network.Packets.Server;
 
-public enum MonsterBattleOutcome { Active = 0, Victory = 1, Defeat = 2, Forfeit = 3, Cancelled = 4, Draw = 5 }
+public enum MonsterBattleOutcome { Active = 0, Victory = 1, Defeat = 2, Forfeit = 3, Cancelled = 4, Draw = 5, Escaped = 6 }
 
 public enum MonsterBattlePhase { Commands, Resolving, Replacement, Completed, Ended }
 
@@ -64,5 +64,6 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(13)] public string Background { get; set; } = string.Empty;
     [Key(14)] public MonsterBattlePhase Phase { get; set; }
     [Key(15)] public MonsterBattlePartyMember[] Party { get; set; } = [];
+    [Key(16)] public bool IsWild { get; set; }
 
 }

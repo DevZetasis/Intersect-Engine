@@ -12,6 +12,8 @@ using Intersect.Server.Entities;
 using Intersect.Server.General;
 using Intersect.Server.Localization;
 using Intersect.Server.Maps;
+using Intersect.Server.Monsters;
+using Intersect.Server.Monsters.Battles;
 using Intersect.Utilities;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -787,10 +789,20 @@ internal sealed partial class PacketHandler
     public void HandlePacket(Client client, MovePacket packet)
     {
         var player = client?.Entity;
-        if (player == null)
+        if (player == null || !player.InGame)
         {
             return;
         }
+
+        if (MonsterPracticeBattles.Registry.HasActiveWild(player.Id))
+        {
+            PacketSender.SendEntityPositionTo(client, player);
+            return;
+        }
+
+        var origin = (player.MapId, player.X, player.Y);
+        var transition = player.EncounterTransition;
+        var availableBeforeMove = player.IsAvailableForWildEncounter;
 
         //check if player is stunned or snared, if so don't let them move.
         foreach (var status in player.CachedStatuses)
@@ -846,7 +858,12 @@ internal sealed partial class PacketHandler
         if (packet.MapId != client.Entity.MapId || packet.X != client.Entity.X || packet.Y != client.Entity.Y)
         {
             PacketSender.SendEntityPositionTo(client, client.Entity);
+            return;
         }
+
+        if (availableBeforeMove && MonsterEncounterSelection.IsEligibleStep(origin.MapId, origin.X, origin.Y,
+                player.MapId, player.X, player.Y, transition != player.EncounterTransition))
+            player.CheckWildEncounter(player.MapId, player.X, player.Y, transition);
     }
 
     //ChatMsgPacket

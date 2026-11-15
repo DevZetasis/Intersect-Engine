@@ -51,7 +51,7 @@ public sealed class MonsterBattlePlayback
         State = state; _index = 0; _elapsed = 0;
         var valid = previous != null && ValidEvents(previous, state);
         if (!valid || state.IsCorrection || previous == null || previous.BattleId != state.BattleId || previous.Revision != state.PreviousRevision ||
-            state.Outcome is MonsterBattleOutcome.Cancelled or MonsterBattleOutcome.Forfeit)
+            state.Outcome is MonsterBattleOutcome.Cancelled or MonsterBattleOutcome.Forfeit or MonsterBattleOutcome.Escaped)
         { Synchronize(); return true; }
         Phase = MonsterBattlePresentationPhase.PlayingSequence;
         BeginEvent();

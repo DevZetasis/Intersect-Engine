@@ -68,6 +68,7 @@ public sealed class MonsterBattleWindow : Window
         _monsters = Button(_mainMenu, "MonstersBattleButton", Strings.MonsterBattle.PartyMenu);
         _monsters.Clicked += (_, _) => { if (CanCommand) { _inParty = true; RefreshControls(); } };
         _run = Button(_mainMenu, "RunButton", Strings.MonsterBattle.Run);
+        _run.Clicked += (_, _) => Submit(MonsterBattleActionKind.Run);
         _fight.Clicked += (_, _) => { if (CanCommand) { _inFight = true; RefreshControls(); } };
         _back = Button(_fightMenu, "BackBattleButton", Strings.MonsterBattle.Back);
         _back.Clicked += (_, _) => { _inFight = false; RefreshControls(); };
@@ -280,6 +281,7 @@ public sealed class MonsterBattleWindow : Window
         var playerStages = StageSummary(_playback.PlayerStages);
         var opponentStages = StageSummary(_playback.OpponentStages);
         _playerName.SetToolTipText(playerStages.Length == 0 ? player.Name : $"{player.Name} — {playerStages}");
+        TitleLabel.Text = state.IsWild ? "Wild Monster Battle" : Strings.MonsterBattle.Title;
         _opponentName.Text = ActorLabel(state.Opponent, _opponentName); _opponentName.SetToolTipText(opponentStages.Length == 0 ? state.Opponent.Name : $"{state.Opponent.Name} — {opponentStages}");
         HP(_playerHP, _playerHPValue, _playback.PlayerHP, player.MaximumHP);
         HP(_opponentHP, _opponentHPValue, _playback.OpponentHP, state.Opponent.MaximumHP);
@@ -290,7 +292,8 @@ public sealed class MonsterBattleWindow : Window
         {
             MonsterBattlePresentationPhase.AwaitingServer => Strings.MonsterBattle.Waiting,
             MonsterBattlePresentationPhase.ShowingResult => Strings.MonsterBattle.Result.ToString(state.Outcome),
-            MonsterBattlePresentationPhase.CommandSelection when state.IsCorrection => Short(_playback.Text, 220),
+            MonsterBattlePresentationPhase.CommandSelection when state.IsCorrection || state.IsWild && state.Turn == 1 =>
+                Short(_playback.Text, 220),
             MonsterBattlePresentationPhase.CommandSelection => Strings.MonsterBattle.Turn.ToString(state.Turn),
             MonsterBattlePresentationPhase.Replacement => state.IsCorrection ? Short(_playback.Text, 220) : Strings.MonsterBattle.Replacement,
             _ => Short(_playback.Text, 220),
@@ -309,7 +312,10 @@ public sealed class MonsterBattleWindow : Window
         if (!_partyMenu.IsHidden) RefreshParty(state);
         _monsters.IsDisabled = !CanCommand || state.Party.Length == 0;
         _fight.IsDisabled = !CanCommand || _inFight; _back.IsDisabled = !CanCommand || !_inFight;
-        foreach (var button in new[] { _bag, _run }) { button.IsDisabled = true; button.SetToolTipText(Strings.MonsterBattle.Unavailable); }
+        _bag.IsDisabled = true;
+        _bag.SetToolTipText(Strings.MonsterBattle.Unavailable);
+        _run.IsDisabled = !state.IsWild || !CanCommand;
+        _run.SetToolTipText(state.IsWild ? "Leave this wild battle." : (string)Strings.MonsterBattle.Unavailable);
         for (var i = 0; i < 4; i++)
         {
             var move = state.Moves.FirstOrDefault(m => m.Slot == i);
@@ -317,7 +323,7 @@ public sealed class MonsterBattleWindow : Window
             _moves[i].SetToolTipText(move == null ? Strings.MonsterBattle.Empty : move.Name + " - " + move.Type + " / " + move.Category + " " + move.UnavailableReason);
             _moves[i].IsDisabled = !CanCommand || !_inFight || move?.Usable != true;
         }
-        _forfeit.IsDisabled = !CanCommand && !MustReplace; // Deliberately separate from Run; no escape calculation exists.
+        _forfeit.IsDisabled = !CanCommand && !MustReplace;
         _close.IsDisabled = _playback.Phase != MonsterBattlePresentationPhase.ShowingResult;
         _advance.IsDisabled = _skip.IsDisabled = !playing;
         IsClosable = !_close.IsDisabled;
@@ -361,6 +367,7 @@ public sealed class MonsterBattleWindow : Window
     private void Submit(MonsterBattleActionKind kind, int slot = -1, Guid target = default)
     {
         if (_playback.State is not { Outcome: MonsterBattleOutcome.Active } state || (!CanCommand && !MustReplace)) return;
+        if (kind == MonsterBattleActionKind.Run && (!state.IsWild || !CanCommand)) return;
         if (kind == MonsterBattleActionKind.Move && (!CanCommand || !_inFight || !state.Moves.Any(move => move.Slot == slot && move.Usable))) return;
         if (kind is MonsterBattleActionKind.Switch or MonsterBattleActionKind.Replace &&
             (_partyMenu.IsHidden || !state.Party.Any(member => member.Actor.Id == target && target != state.Player.Id && member.Actor.HP > 0))) return;

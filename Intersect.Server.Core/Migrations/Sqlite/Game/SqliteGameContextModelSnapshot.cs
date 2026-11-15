@@ -461,6 +461,42 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                     b.ToTable("MonsterMoves");
                 });
 
+            modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterEncounterTableDescriptor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Folder")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(0);
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Rate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Cooldown")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntriesJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Entries");
+
+                    b.Property<long>("TimeCreated")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MonsterEncounterTables");
+                });
+
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterGenderDescriptor", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1536,6 +1572,10 @@ namespace Intersect.Server.Migrations.Sqlite.Game
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.Property<string>("EncountersJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Encounters");
 
                     b.ToTable("Maps");
                 });

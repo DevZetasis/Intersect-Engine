@@ -62,6 +62,7 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
     public DbSet<MonsterNatureDescriptor> MonsterNatures { get; set; }
     public DbSet<MonsterStatusDescriptor> MonsterStatuses { get; set; }
     public DbSet<MonsterGenderDescriptor> MonsterGenders { get; set; }
+    public DbSet<MonsterEncounterTableDescriptor> MonsterEncounterTables { get; set; }
 
     //Projectiles
     public DbSet<ProjectileDescriptor> Projectiles { get; set; }

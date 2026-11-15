@@ -19,6 +19,13 @@ public partial class FrmMapProperties : DockContent
         InitializeComponent();
         Icon = Program.Icon;
 
+        var encounterButton = new DarkUI.Controls.DarkButton
+        {
+            Text = "Monster Encounters…", Dock = DockStyle.Bottom, Height = 29,
+        };
+        encounterButton.Click += (_, _) => MapEncounterEditor.Open(this);
+        Controls.Add(encounterButton);
+
         UpdatePropertiesDelegate = Update;
     }
 

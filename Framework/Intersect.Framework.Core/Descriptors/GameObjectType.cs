@@ -90,4 +90,7 @@ public enum GameObjectType
 
     [GameObjectInfo(typeof(MonsterGenderDescriptor), "monster_genders")]
     MonsterGender = 24,
+
+    [GameObjectInfo(typeof(MonsterEncounterTableDescriptor), "monster_encounter_tables")]
+    MonsterEncounterTable = 25,
 }

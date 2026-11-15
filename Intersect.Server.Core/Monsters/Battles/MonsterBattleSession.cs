@@ -27,6 +27,8 @@ public sealed partial class MonsterBattleSession
     public bool Reserves(Guid monster) => _playerSide.Party.Any(member => member.Id == monster);
     public Guid Id { get; } = Guid.NewGuid();
     public Guid OwnerId => _playerSide.ControllerId!.Value;
+    public GeneratedWildMonster? Wild { get; }
+    public Guid? EncounterTableId { get; }
     public int Turn { get; private set; } = 1;
     public Guid Revision { get; private set; } = Guid.NewGuid();
     public MonsterBattleOutcome Outcome { get; private set; }
@@ -34,7 +36,8 @@ public sealed partial class MonsterBattleSession
 
     public MonsterBattleSession(MonsterBattleSide player, MonsterBattleSide opponent, MonsterBattleRules rules,
         IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "",
-        Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null, Func<Guid, MonsterStatusDescriptor?>? findStatus = null)
+        Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null, Func<Guid, MonsterStatusDescriptor?>? findStatus = null,
+        GeneratedWildMonster? wild = null, Guid? encounterTableId = null)
     {
         rules.Validate();
         var members = player.Party.Concat(opponent.Party).ToArray();
@@ -42,10 +45,13 @@ public sealed partial class MonsterBattleSession
             opponent.Party.Count != 1 || members.Select(member => member.Id).Distinct().Count() != members.Length ||
             members.Any(member => member.Calculation.Level > rules.MaxLevel) ||
             player.Active.HP == 0 || opponent.Active.HP == 0 ||
-            player.Active.LegalSlots().Length == 0 || opponent.Active.LegalSlots().Length == 0 ||
+            player.Active.LegalSlots().Length == 0 || (wild == null && opponent.Active.LegalSlots().Length == 0) ||
             (persist != null && (player.Party.Count != 1 || persistParty != null)))
             throw new InvalidOperationException("Practice requires a healthy active monster and opponent with usable moves.");
 
+        Wild = wild;
+        EncounterTableId = encounterTableId;
+        if (Wild != null) _messages = [$"A wild {opponent.Active.Name} appeared!"];
         _background = background;
         _persist = persistParty ?? (persist == null ? null : changed => persist(changed.Single()));
         _playerSide = player.Copy();
@@ -109,9 +115,14 @@ public sealed partial class MonsterBattleSession
         {
             var kind = ValidateAction(owner, action);
             _changed = [];
+            if (kind == MonsterBattleActionKind.Run)
+            {
+                Finish(MonsterBattleOutcome.Escaped, "You escaped from the wild battle.");
+                return;
+            }
             if (kind == MonsterBattleActionKind.Forfeit)
             {
-                Finish(MonsterBattleOutcome.Forfeit, "You forfeited the practice battle.");
+                Finish(MonsterBattleOutcome.Forfeit, Wild == null ? "You forfeited the practice battle." : "You forfeited the wild battle.");
                 return;
             }
 
@@ -130,25 +141,26 @@ public sealed partial class MonsterBattleSession
                 else
                 {
                     // The AI chooses against the pre-action view, without knowing the player's choice.
-                    var opponentSlot = _opponentProvider.ChooseMove(new(Opponent.LegalSlots(), Opponent.View(), [Player.View()]), _random);
-                    if (opponentSlot is < 0 or > 3 || Opponent.Moves[opponentSlot]?.Usable != true)
-                        throw new InvalidOperationException("Practice provider selected an illegal action.");
-                    var opponentMove = Opponent.Moves[opponentSlot]!;
+                    var opponentMove = ChooseOpponentMove();
                     if (kind == MonsterBattleActionKind.Switch)
                     {
                         Switch(action.MonsterId, true, messages, events);
-                        Attack(Opponent, Player, opponentMove, messages, events);
+                        if (opponentMove != null) Attack(Opponent, Player, opponentMove, messages, events);
                     }
                     else
                     {
                         var playerMove = Player.Moves[action.MoveSlot]!;
-                        var order = MonsterBattleCalculator.OrderActions([
-                            new(Player.Id, playerMove.Definition.Priority, Player.EffectiveSpeed),
-                            new(Opponent.Id, opponentMove.Definition.Priority, Opponent.EffectiveSpeed)], _random);
-                        foreach (var entry in order)
+                        if (opponentMove == null) Attack(Player, Opponent, playerMove, messages, events);
+                        else
                         {
-                            if (entry.ActorId == Player.Id) Attack(Player, Opponent, playerMove, messages, events);
-                            else Attack(Opponent, Player, opponentMove, messages, events);
+                            var order = MonsterBattleCalculator.OrderActions([
+                                new(Player.Id, playerMove.Definition.Priority, Player.EffectiveSpeed),
+                                new(Opponent.Id, opponentMove.Definition.Priority, Opponent.EffectiveSpeed)], _random);
+                            foreach (var entry in order)
+                            {
+                                if (entry.ActorId == Player.Id) Attack(Player, Opponent, playerMove, messages, events);
+                                else Attack(Opponent, Player, opponentMove, messages, events);
+                            }
                         }
                     }
                     TickStatus(Player, messages, events);
@@ -167,6 +179,17 @@ public sealed partial class MonsterBattleSession
                 throw;
             }
         }
+    }
+
+    private MonsterBattleMove? ChooseOpponentMove()
+    {
+        var legal = Opponent.LegalSlots();
+        // A wild monster with no known move or remaining PP passes its action.
+        if (Wild != null && legal.Length == 0) return null;
+        var slot = _opponentProvider.ChooseMove(new(legal, Opponent.View(), [Player.View()]), _random);
+        if (slot is < 0 or > 3 || Opponent.Moves[slot] is not { Usable: true } move)
+            throw new InvalidOperationException("The opponent provider selected an illegal action.");
+        return move;
     }
 
     private void Switch(Guid target, bool withdraw, List<string> messages, List<MonsterBattlePresentationEvent> events)
@@ -317,7 +340,7 @@ public sealed partial class MonsterBattleSession
                 _ => "Both parties fainted.",
             });
         }
-        else if (Opponent.LegalSlots().Length == 0 || !_playerSide.Party.Any(actor => actor.HP > 0 && actor.LegalSlots().Length > 0))
+        else if ((Wild == null && Opponent.LegalSlots().Length == 0) || !_playerSide.Party.Any(actor => actor.HP > 0 && actor.LegalSlots().Length > 0))
         {
             Outcome = MonsterBattleOutcome.Draw;
             messages.Add("Practice ended in a draw: a side has no executable PP remaining.");
@@ -352,6 +375,7 @@ public sealed partial class MonsterBattleSession
             var kind = action.Forfeit && action.Kind == MonsterBattleActionKind.Move ? MonsterBattleActionKind.Forfeit : action.Kind;
             switch (kind)
             {
+                case MonsterBattleActionKind.Run when Wild != null && Phase == MonsterBattlePhase.Commands:
                 case MonsterBattleActionKind.Forfeit:
                     break;
                 case MonsterBattleActionKind.Move when Phase == MonsterBattlePhase.Commands &&
@@ -399,7 +423,7 @@ public sealed partial class MonsterBattleSession
         lock (_gate) return new()
         {
             PlayerId = OwnerId, BattleId = Id, Turn = Turn, Revision = Revision, Outcome = Outcome, Phase = Phase,
-            Player = Player.View(), Opponent = Opponent.View(), Sequence = sequence,
+            Player = Player.View(), Opponent = Opponent.View(), Sequence = sequence, IsWild = Wild != null,
             Party = _playerSide.Party.Select((actor, index) => new MonsterBattlePartyMember
                 { Slot = actor.PartySlot < 0 ? index : actor.PartySlot, Actor = actor.View() }).ToArray(),
             Moves = Enumerable.Range(0, 4).Select(slot => Player.Moves[slot]?.View(slot) ?? new MonsterBattleMoveView { Slot = slot, Name = "Empty slot", UnavailableReason = "Empty slot" }).ToArray(),

@@ -248,7 +248,8 @@ public partial class Player : Entity, IPlayer
 
     public bool IsInMyGuild(IPlayer player) => IsInGuild && player != null && player.GuildName == Guild;
 
-    public bool IsBusy => !(Globals.EventHolds.Count == 0 &&
+    public bool IsBusy => MonsterBattleState is { IsWild: true, Outcome: Intersect.Network.Packets.Server.MonsterBattleOutcome.Active } ||
+        !(Globals.EventHolds.Count == 0 &&
                  !Globals.MoveRouteActive &&
                  Globals.GameShop == null &&
                  Globals.InBank == false &&

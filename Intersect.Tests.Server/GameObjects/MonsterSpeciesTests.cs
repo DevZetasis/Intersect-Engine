@@ -202,7 +202,7 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterGenders().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterEncounters().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
         Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");
@@ -302,7 +302,7 @@ public class MonsterSpeciesTests
                 db.Npcs.Add(new NPCDescriptor(npcId) { Name = "Existing NPC", Level = 7 });
                 db.Items.Add(new ItemDescriptor(itemId) { Name = "Existing Item" });
                 db.Spells.Add(new SpellDescriptor(spellId) { Name = "Existing Spell" });
-                db.Maps.Add(new MapController(mapId) { Name = "Existing Map" });
+                MonsterEncounterTests.InsertLegacyMap(db, new MapController(mapId) { Name = "Existing Map" });
                 db.SaveChanges();
                 db.Database.Migrate();
                 Assert.That(db.Database.HasPendingModelChanges(), Is.False, "SQLite snapshot matches the runtime model.");
