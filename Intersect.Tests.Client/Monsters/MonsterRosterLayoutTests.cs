@@ -417,7 +417,76 @@ public class MonsterRosterLayoutTests
                 ClickBattle("FightButton");
                 Assert.That(BattleLabel("BattleMove0").Text, Does.Contain("PP 4/7"));
                 Assert.That(sent.Count, Is.EqualTo(3));
+                sent.Clear();
+                var wild = BattleState(12, 1);
+                wild.BattleId = Guid.NewGuid();
+                wild.IsWild = true;
+                wild.CanRun = true;
+                applyBattle.Invoke(packetHandler, [null, wild]); battleWindow.Update();
+                Assert.That(BattleButton("RunButton").IsDisabled, Is.False);
+                Assert.That(BattleButton("RunButton").Text, Is.EqualTo("Run"));
+                ClickBattle("RunButton");
+                Assert.That(sent.Single().Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.Run));
+                var escaped = BattleState(13, 1, MonsterBattleOutcome.Escaped);
+                escaped.BattleId = wild.BattleId;
+                escaped.IsWild = escaped.AwaitingPresentationClose = true;
+                applyBattle.Invoke(packetHandler, [null, escaped]); battleWindow.Update();
+                Assert.That(sent.Count, Is.EqualTo(1), "Receiving a result does not acknowledge it.");
+                battleWindow.Close();
+                Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                Assert.That(sent.Last().Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.PresentationClosed));
+                Assert.That(sent.Last().Revision, Is.EqualTo(escaped.Revision));
+                battleWindow.Close();
+                Assert.That(sent.Count, Is.EqualTo(2), "Closing twice cannot acknowledge twice.");
+
+                sent.Clear();
+                var restricted = BattleState(14, 1);
+                restricted.BattleId = Guid.NewGuid();
+                restricted.IsWild = true;
+                applyBattle.Invoke(packetHandler, [null, restricted]); battleWindow.Update();
+                Assert.That(BattleButton("RunButton").IsDisabled, Is.True);
+                Assert.That(BattleButton("RunButton").Text, Is.EqualTo("Run (unavailable)"));
+                ClickBattle("RunButton"); Assert.That(sent, Is.Empty);
+
+                var victory = BattleState(15, 2, MonsterBattleOutcome.Victory);
+                victory.BattleId = restricted.BattleId;
+                victory.PreviousRevision = restricted.Revision;
+                victory.IsWild = victory.AwaitingPresentationClose = true;
+                victory.Opponent.Id = restricted.Opponent.Id;
+                victory.Opponent.HP = 0;
+                victory.Moves[0].PP = 18;
+                victory.Events = [
+                    new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 0, ActorId = first.Id, TargetId = victory.Opponent.Id, Text = "Attack" },
+                    new() { Kind = MonsterBattleEventKind.DamageApplied, Order = 1, ActorId = first.Id,
+                        TargetId = victory.Opponent.Id, HPBefore = 30, HPAfter = 0, Text = "Impact" },
+                    new() { Kind = MonsterBattleEventKind.MonsterFainted, Order = 2, ActorId = first.Id, TargetId = victory.Opponent.Id, Text = "Fainted" },
+                    new() { Kind = MonsterBattleEventKind.BattleFinished, Order = 3, Text = "Won" },
+                ];
+                applyBattle.Invoke(packetHandler, [null, victory]); battleWindow.Update();
+                Assert.That(playback.Text, Is.EqualTo("Attack"));
+                playback.Advance();
+                playback.Tick(.1);
+                Assert.That(playback.OpponentHP, Is.InRange(1d, 29d));
+                battleWindow.Close();
+                Assert.That(sent, Is.Empty);
+                Assert.That(battleWindow.IsVisibleInTree, Is.True);
+                playback.Advance();
+                Assert.That(playback.Text, Is.EqualTo("Fainted"));
+                Assert.That(playback.OpponentHP, Is.Zero);
+                playback.Advance();
+                Assert.That(playback.Text, Is.EqualTo("Won"));
+                Assert.That(sent, Is.Empty);
+                playback.Advance(); battleWindow.Update();
+                Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);
+                Assert.That(BattleLabel("BattleMove0").Text, Does.Contain("PP 18/20"));
+                ClickBattle("CloseBattleButton");
+                Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                var acknowledgment = sent.Single();
+                Assert.That(acknowledgment.Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.PresentationClosed));
+                Assert.That(acknowledgment.BattleId, Is.EqualTo(victory.BattleId));
+                Assert.That(acknowledgment.Revision, Is.EqualTo(victory.Revision));
                 player.MonsterBattleState = null; battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                Assert.That(sent.Count, Is.EqualTo(1), "Reset cannot acknowledge a result.");
             }
             finally { Intersect.Client.Interface.Interface.InputBlockingComponents.Remove(battleWindow); }
 

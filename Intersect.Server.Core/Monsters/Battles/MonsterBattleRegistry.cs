@@ -4,17 +4,26 @@ using Intersect.Network.Packets.Server;
 namespace Intersect.Server.Monsters.Battles;
 
 /// <summary>Serializes battle lifecycle and turns. Publication targets only the owning character.</summary>
-public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket> publish, Action<Exception>? reportFailure = null)
+public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket> publish,
+    Action<Exception>? reportFailure = null, TimeProvider? timeProvider = null)
 {
     public object SyncRoot => Intersect.Server.Monsters.MonsterTypeRules.ContentGate;
     private sealed record ActiveBattle(MonsterBattleSession Session, TaskCompletionSource<MonsterBattleOutcome>? Completion);
 
+    private sealed record PendingPresentation(MonsterBattleSession Session, TaskCompletionSource<MonsterBattleOutcome> Completion)
+    {
+        public ITimer? Timeout { get; set; }
+    }
+
+    private static readonly TimeSpan PresentationTimeout = TimeSpan.FromMinutes(5);
     private readonly Dictionary<Guid, ActiveBattle> _active = new();
+    private readonly Dictionary<Guid, PendingPresentation> _pending = new();
     private long _sequence;
     public bool HasActive(Guid owner) { lock (SyncRoot) return _active.ContainsKey(owner); }
+    // Keep the trainer on the event tile until the terminal result is closed or abandoned.
     public bool HasActiveWild(Guid owner)
     {
-        lock (SyncRoot) return _active.TryGetValue(owner, out var session) && session.Session.Wild != null;
+        lock (SyncRoot) return _pending.ContainsKey(owner) || (_active.TryGetValue(owner, out var session) && session.Session.Wild != null);
     }
 
     public (Guid? TableId, GeneratedWildMonster Monster)? InspectWild(Guid owner)
@@ -36,7 +45,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     {
         lock (SyncRoot)
         {
-            if (_active.ContainsKey(owner)) throw new InvalidOperationException("This character already has an active monster battle.");
+            if (_active.ContainsKey(owner) || _pending.ContainsKey(owner)) throw new InvalidOperationException("This character already has a battle or a battle result to close.");
             var session = create();
             if (session.OwnerId != owner) throw new InvalidOperationException("Wrong battle owner.");
             var battle = new ActiveBattle(session, completion);
@@ -49,6 +58,14 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     {
         lock (SyncRoot)
         {
+            if (action.Kind == MonsterBattleActionKind.PresentationClosed)
+            {
+                if (_pending.TryGetValue(owner, out var pending) && pending.Session.Id == action.BattleId &&
+                    pending.Session.Revision == action.Revision && pending.Session.Turn == action.Turn)
+                    CompletePresentation(owner, pending.Session.Outcome);
+                return;
+            }
+
             if (!_active.TryGetValue(owner, out var battle) || battle.Session.Id != action.BattleId)
                 throw new InvalidOperationException("No matching battle for this character.");
             var session = battle.Session;
@@ -74,15 +91,38 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
                 battle.Completion?.TrySetResult(MonsterBattleOutcome.Cancelled);
                 throw;
             }
-            if (session.Outcome != MonsterBattleOutcome.Active) _active.Remove(owner);
-            if (Send(battle) && session.Outcome != MonsterBattleOutcome.Active)
-                battle.Completion?.TrySetResult(session.Outcome);
+            if (session.Outcome == MonsterBattleOutcome.Active)
+            {
+                Send(battle);
+                return;
+            }
+
+            _active.Remove(owner);
+            if (battle.Completion is { } completion && session.Outcome is
+                MonsterBattleOutcome.Victory or MonsterBattleOutcome.Defeat or MonsterBattleOutcome.Escaped)
+            {
+                var presentation = new PendingPresentation(session, completion);
+                _pending.Add(owner, presentation);
+                presentation.Timeout = (timeProvider ?? TimeProvider.System).CreateTimer(_ =>
+                {
+                    lock (SyncRoot)
+                    {
+                        if (_pending.TryGetValue(owner, out var current) && ReferenceEquals(current, presentation))
+                            CompletePresentation(owner, MonsterBattleOutcome.Cancelled);
+                    }
+                }, null, PresentationTimeout, Timeout.InfiniteTimeSpan);
+                Send(battle, awaitingPresentationClose: true);
+                return;
+            }
+
+            if (Send(battle)) battle.Completion?.TrySetResult(session.Outcome);
         }
     }
     public void Cancel(Guid owner, string reason, bool disconnect = false)
     {
         lock (SyncRoot)
         {
+            CompletePresentation(owner, MonsterBattleOutcome.Cancelled);
             if (!_active.Remove(owner, out var battle)) return;
             battle.Session.Cancel(reason, disconnect);
             Send(battle);
@@ -92,13 +132,14 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     public void CancelAll()
     {
         lock (SyncRoot)
-            foreach (var owner in _active.Keys.ToArray()) Cancel(owner, "Monster battle cancelled: server shutdown.");
+            foreach (var owner in _active.Keys.Concat(_pending.Keys).ToArray()) Cancel(owner, "Monster battle cancelled: server shutdown.");
     }
     public bool CancelBattle(Guid battleId)
     {
         lock (SyncRoot)
         {
-            var session = _active.Values.SingleOrDefault(battle => battle.Session.Id == battleId)?.Session;
+            var session = _active.Values.Select(battle => battle.Session)
+                .Concat(_pending.Values.Select(presentation => presentation.Session)).SingleOrDefault(session => session.Id == battleId);
             if (session == null) return false;
             Cancel(session.OwnerId, "Monster battle cancelled by server operator.");
             return true;
@@ -108,19 +149,34 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     {
         lock (SyncRoot)
         {
-            if (_active.TryGetValue(owner, out var battle) && battle.Session.Id == battleId && battle.Completion != null)
+            if ((_active.TryGetValue(owner, out var battle) && battle.Session.Id == battleId && battle.Completion != null) ||
+                (_pending.TryGetValue(owner, out var pending) && pending.Session.Id == battleId))
                 Cancel(owner, "Monster battle cancelled because its event ended.");
         }
     }
 
-    private bool Send(ActiveBattle battle, string? rejection = null)
+    private void CompletePresentation(Guid owner, MonsterBattleOutcome outcome)
+    {
+        if (!_pending.Remove(owner, out var pending)) return;
+        pending.Timeout?.Dispose();
+        pending.Completion.TrySetResult(outcome);
+    }
+
+    private bool Send(ActiveBattle battle, string? rejection = null, bool awaitingPresentationClose = false)
     {
         var session = battle.Session;
-        try { publish(session.OwnerId, session.Snapshot(checked(++_sequence), rejection)); return true; }
+        try
+        {
+            var state = session.Snapshot(checked(++_sequence), rejection);
+            state.AwaitingPresentationClose = awaitingPresentationClose;
+            publish(session.OwnerId, state);
+            return true;
+        }
         catch (Exception exception)
         {
             session.Cancel("Battle cancelled because battle state could not be delivered.");
             _active.Remove(session.OwnerId);
+            CompletePresentation(session.OwnerId, MonsterBattleOutcome.Cancelled);
             battle.Completion?.TrySetResult(MonsterBattleOutcome.Cancelled);
             try
             {

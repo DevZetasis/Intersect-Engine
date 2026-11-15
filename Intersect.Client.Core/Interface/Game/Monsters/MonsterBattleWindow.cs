@@ -52,7 +52,7 @@ public sealed class MonsterBattleWindow : Window
         _advance = Button(footer, "AdvanceButton", Strings.MonsterBattle.Next); _advance.Width = 90; _advance.Dock = Pos.Left;
         _skip = Button(footer, "SkipButton", Strings.MonsterBattle.Skip); _skip.Width = 150; _skip.Dock = Pos.Left;
         _forfeit.Clicked += (_, _) => Submit(MonsterBattleActionKind.Forfeit);
-        _close.Clicked += (_, _) => { if (_playback.Phase == MonsterBattlePresentationPhase.ShowingResult) Hide(); };
+        _close.Clicked += (_, _) => Close();
         _advance.Clicked += (_, _) => { _playback.Advance(); RefreshControls(); };
         _skip.Clicked += (_, _) => { _playback.Skip(); RefreshControls(); };
         _commands = new Panel(this, "BattleCommands") { Dock = Pos.Bottom, Height = 178 };
@@ -67,7 +67,7 @@ public sealed class MonsterBattleWindow : Window
         _bag = Button(_mainMenu, "BagButton", Strings.MonsterBattle.Bag);
         _monsters = Button(_mainMenu, "MonstersBattleButton", Strings.MonsterBattle.PartyMenu);
         _monsters.Clicked += (_, _) => { if (CanCommand) { _inParty = true; RefreshControls(); } };
-        _run = Button(_mainMenu, "RunButton", Strings.MonsterBattle.Run);
+        _run = Button(_mainMenu, "RunButton", Strings.MonsterBattle.RunUnavailable);
         _run.Clicked += (_, _) => Submit(MonsterBattleActionKind.Run);
         _fight.Clicked += (_, _) => { if (CanCommand) { _inFight = true; RefreshControls(); } };
         _back = Button(_fightMenu, "BackBattleButton", Strings.MonsterBattle.Back);
@@ -314,8 +314,9 @@ public sealed class MonsterBattleWindow : Window
         _fight.IsDisabled = !CanCommand || _inFight; _back.IsDisabled = !CanCommand || !_inFight;
         _bag.IsDisabled = true;
         _bag.SetToolTipText(Strings.MonsterBattle.Unavailable);
-        _run.IsDisabled = !state.IsWild || !CanCommand;
-        _run.SetToolTipText(state.IsWild ? "Leave this wild battle." : (string)Strings.MonsterBattle.Unavailable);
+        _run.Text = state.CanRun ? Strings.MonsterBattle.RunAvailable : Strings.MonsterBattle.RunUnavailable;
+        _run.IsDisabled = !state.CanRun || !CanCommand;
+        _run.SetToolTipText(state.CanRun ? Strings.MonsterBattle.RunHelp : Strings.MonsterBattle.RunProhibited);
         for (var i = 0; i < 4; i++)
         {
             var move = state.Moves.FirstOrDefault(m => m.Slot == i);
@@ -367,7 +368,7 @@ public sealed class MonsterBattleWindow : Window
     private void Submit(MonsterBattleActionKind kind, int slot = -1, Guid target = default)
     {
         if (_playback.State is not { Outcome: MonsterBattleOutcome.Active } state || (!CanCommand && !MustReplace)) return;
-        if (kind == MonsterBattleActionKind.Run && (!state.IsWild || !CanCommand)) return;
+        if (kind == MonsterBattleActionKind.Run && (!state.CanRun || !CanCommand)) return;
         if (kind == MonsterBattleActionKind.Move && (!CanCommand || !_inFight || !state.Moves.Any(move => move.Slot == slot && move.Usable))) return;
         if (kind is MonsterBattleActionKind.Switch or MonsterBattleActionKind.Replace &&
             (_partyMenu.IsHidden || !state.Party.Any(member => member.Actor.Id == target && target != state.Player.Id && member.Actor.HP > 0))) return;
@@ -381,10 +382,19 @@ public sealed class MonsterBattleWindow : Window
         base.Hide();
     }
 
+    protected override bool CanClose => !IsHidden && _playback.Phase == MonsterBattlePresentationPhase.ShowingResult;
+
     protected override void OnClose(Base sender, EventArgs args)
     {
         _animation.Cancel();
         base.OnClose(sender, args);
+
+        if (_playback.State is { AwaitingPresentationClose: true } state)
+            _send(new()
+            {
+                BattleId = state.BattleId, Turn = state.Turn, Revision = state.Revision,
+                Kind = MonsterBattleActionKind.PresentationClosed,
+            });
     }
 
     protected override void Dispose(bool disposing)

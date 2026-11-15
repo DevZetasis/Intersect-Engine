@@ -109,7 +109,8 @@ public sealed class MonsterEventBattleTests
             (PlayerHp: 1, OpponentHp: 200, Kind: MonsterBattleActionKind.Move, Text: "Defeat"),
             (PlayerHp: 200, OpponentHp: 200, Kind: MonsterBattleActionKind.Run, Text: "Escape"),
         };
-        var registry = new MonsterBattleRegistry((_, _) => { });
+        var snapshots = new List<MonsterBattleStatePacket>();
+        var registry = new MonsterBattleRegistry((_, state) => snapshots.Add(state));
         foreach (var test in cases)
         {
             var owner = Guid.NewGuid();
@@ -121,7 +122,23 @@ public sealed class MonsterEventBattleTests
             Assert.That(frame.TryBeginMonsterBattle(command, () => throw new AssertionException("Duplicate start")), Is.False);
             Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
             var action = Move(session, test.Kind);
+            registry.Submit(owner, Move(session, MonsterBattleActionKind.PresentationClosed));
+            Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
             registry.Submit(owner, action);
+            var terminal = snapshots.Last();
+            Assert.That(terminal.AwaitingPresentationClose, Is.True);
+            Assert.That(terminal.CanRun, Is.False);
+            Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
+            Assert.That(registry.HasActive(owner), Is.False);
+            Assert.Throws<InvalidOperationException>(() => registry.Start(owner, () => CreateSession(owner, 200, 1)));
+
+            var ack = Move(session, MonsterBattleActionKind.PresentationClosed);
+            registry.Submit(Guid.NewGuid(), ack);
+            registry.Submit(owner, new() { BattleId = session.Id, Turn = session.Turn, Revision = action.Revision,
+                Kind = MonsterBattleActionKind.PresentationClosed });
+            Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
+            registry.Submit(owner, ack);
+            registry.Submit(owner, ack);
             Assert.That(frame.TryConsumeMonsterBattle(out var branch), Is.True);
             Assert.That(((ShowTextCommand)branch!.Command).Text, Is.EqualTo(test.Text));
             Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
@@ -147,6 +164,8 @@ public sealed class MonsterEventBattleTests
         Assert.That(otherFrame.TryBeginMonsterBattle(command, () => (registry.Start(second, () => otherBattle, secondResult), secondResult.Task)), Is.True);
         Assert.Throws<InvalidOperationException>(() => registry.Start(first, () => CreateSession(first, 200, 1)));
         registry.Submit(first, Move(firstBattle));
+        registry.Submit(second, Move(otherBattle, MonsterBattleActionKind.Run));
+        registry.Submit(first, Move(firstBattle, MonsterBattleActionKind.PresentationClosed));
         Assert.That(firstFrame.TryConsumeMonsterBattle(out var victory), Is.True);
         Assert.That(victory!.CommandList, Is.SameAs(page.CommandLists[command.Victory]));
         Assert.That(otherFrame.TryConsumeMonsterBattle(out _), Is.False);
@@ -155,13 +174,80 @@ public sealed class MonsterEventBattleTests
         registry.CancelEventBattle(first, firstBattle.Id);
         registry.CancelEventBattle(first, otherBattle.Id);
         Assert.That(registry.HasActive(first), Is.True);
-        Assert.That(registry.HasActive(second), Is.True);
+        Assert.That(registry.HasActiveWild(second), Is.True);
         registry.Cancel(second, "Disconnect", disconnect: true);
         Assert.That(otherFrame.TryConsumeMonsterBattle(out var cancelled), Is.True);
         Assert.That(cancelled, Is.Null);
-        Assert.That(registry.HasActive(second), Is.False);
+        Assert.That(registry.HasActiveWild(second), Is.False);
+        registry.Submit(second, Move(otherBattle, MonsterBattleActionKind.PresentationClosed));
+        Assert.That(otherFrame.TryConsumeMonsterBattle(out _), Is.False);
         registry.CancelAll();
         Assert.That(next.Task.Result, Is.EqualTo(MonsterBattleOutcome.Cancelled));
+    }
+
+    private sealed class PresentationClock : TimeProvider
+    {
+        private ManualTimer? _timer;
+        public TimeSpan DueTime { get; private set; }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            DueTime = dueTime;
+            return _timer = new(() => callback(state));
+        }
+
+        public void Expire() => _timer!.Fire();
+
+        private sealed class ManualTimer(Action callback) : ITimer
+        {
+            private bool _disposed;
+            public void Fire() { if (!_disposed) callback(); }
+            public void Dispose() => _disposed = true;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+            public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
+        }
+    }
+
+    [Test]
+    public void MissingPresentationAcknowledgmentAbortsTheEventAndReleasesTheTrainer()
+    {
+        var (page, command) = CreatePage();
+        var clock = new PresentationClock();
+        var registry = new MonsterBattleRegistry((_, _) => { }, timeProvider: clock);
+        var owner = Guid.NewGuid();
+        var result = NewResult();
+        var frame = new CommandInstance(page);
+        var session = CreateSession(owner, 200, 1);
+        Assert.That(frame.TryBeginMonsterBattle(command, () => (registry.Start(owner, () => session, result), result.Task)), Is.True);
+        registry.Submit(owner, Move(session));
+        Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
+        Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromMinutes(5)));
+        clock.Expire();
+        Assert.That(frame.TryConsumeMonsterBattle(out var branch), Is.True);
+        Assert.That(branch, Is.Null);
+        Assert.That(frame.WaitingForResponse, Is.EqualTo(CommandInstance.EventResponse.None));
+        registry.Submit(owner, Move(session, MonsterBattleActionKind.PresentationClosed));
+        Assert.That(frame.TryConsumeMonsterBattle(out _), Is.False);
+        Assert.DoesNotThrow(() => registry.Start(owner, () => CreateSession(owner, 200, 1)));
+        registry.CancelAll();
+    }
+
+    [Test]
+    public void RemovingTheEventWhileItsResultIsOpenRejectsTheLateAcknowledgment()
+    {
+        var (page, command) = CreatePage();
+        var registry = new MonsterBattleRegistry((_, _) => { });
+        var owner = Guid.NewGuid();
+        var result = NewResult();
+        var frame = new CommandInstance(page);
+        var session = CreateSession(owner, 200, 1);
+        Assert.That(frame.TryBeginMonsterBattle(command, () => (registry.Start(owner, () => session, result), result.Task)), Is.True);
+        registry.Submit(owner, Move(session));
+        registry.CancelEventBattle(owner, session.Id);
+        registry.Submit(owner, Move(session, MonsterBattleActionKind.PresentationClosed));
+        Assert.That(frame.TryConsumeMonsterBattle(out var branch), Is.True);
+        Assert.That(branch, Is.Null);
+        Assert.That(registry.HasActiveWild(owner), Is.False);
     }
 
     [Test]

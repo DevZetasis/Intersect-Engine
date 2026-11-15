@@ -261,12 +261,16 @@ public sealed class MonsterEncounterTests
             var state = publications[player];
             return new() { BattleId = state.BattleId, Revision = state.Revision, Turn = state.Turn, Kind = MonsterBattleActionKind.Run };
         }
+        Assert.That(publications[practiceOwner].CanRun, Is.False);
         Assert.Throws<InvalidOperationException>(() => registry.Submit(practiceOwner, Run(practiceOwner)));
+        Assert.That(publications[owner].CanRun, Is.True);
         var before = publications[owner];
         registry.Submit(owner, Run(owner));
         var after = publications[owner];
         Assert.That(after.Outcome, Is.EqualTo(MonsterBattleOutcome.Escaped));
         Assert.That(after.IsWild, Is.True);
+        Assert.That(after.CanRun, Is.False);
+        Assert.That(after.AwaitingPresentationClose, Is.False);
         Assert.That(after.Player.HP, Is.EqualTo(before.Player.HP));
         Assert.That(after.Moves[0].PP, Is.EqualTo(before.Moves[0].PP));
         Assert.That(registry.HasActive(owner), Is.False);

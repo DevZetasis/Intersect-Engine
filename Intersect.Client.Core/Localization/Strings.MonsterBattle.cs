@@ -23,7 +23,10 @@ public static partial class Strings
         public static LocalizedString PartySendOut = "Send this monster into battle.";
         public static LocalizedString PartyMember = "#{00}  {01}  Lv. {02}";
         public static LocalizedString Replacement = "Choose a replacement monster.";
-        public static LocalizedString Run = "Run (unavailable)";
+        public static LocalizedString RunAvailable = "Run";
+        public static LocalizedString RunUnavailable = "Run (unavailable)";
+        public static LocalizedString RunHelp = "Leave this wild battle.";
+        public static LocalizedString RunProhibited = "You cannot run from this battle right now.";
         public static LocalizedString Back = "Back";
         public static LocalizedString Next = "Next";
         public static LocalizedString Skip = "Skip playback";

@@ -2,7 +2,7 @@ using MessagePack;
 
 namespace Intersect.Network.Packets.Client;
 
-public enum MonsterBattleActionKind { Move, Switch, Replace, Forfeit, Run }
+public enum MonsterBattleActionKind { Move, Switch, Replace, Forfeit, Run, PresentationClosed }
 
 [MessagePackObject]
 public sealed class MonsterBattleActionPacket : IntersectPacket

@@ -34,6 +34,8 @@ public sealed partial class MonsterBattleSession
     public MonsterBattleOutcome Outcome { get; private set; }
     public MonsterBattlePhase Phase { get; private set; }
 
+    private bool CanRun => Wild != null && Outcome == MonsterBattleOutcome.Active && Phase == MonsterBattlePhase.Commands;
+
     public MonsterBattleSession(MonsterBattleSide player, MonsterBattleSide opponent, MonsterBattleRules rules,
         IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "",
         Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null, Func<Guid, MonsterStatusDescriptor?>? findStatus = null,
@@ -375,7 +377,7 @@ public sealed partial class MonsterBattleSession
             var kind = action.Forfeit && action.Kind == MonsterBattleActionKind.Move ? MonsterBattleActionKind.Forfeit : action.Kind;
             switch (kind)
             {
-                case MonsterBattleActionKind.Run when Wild != null && Phase == MonsterBattlePhase.Commands:
+                case MonsterBattleActionKind.Run when CanRun:
                 case MonsterBattleActionKind.Forfeit:
                     break;
                 case MonsterBattleActionKind.Move when Phase == MonsterBattlePhase.Commands &&
@@ -423,7 +425,7 @@ public sealed partial class MonsterBattleSession
         lock (_gate) return new()
         {
             PlayerId = OwnerId, BattleId = Id, Turn = Turn, Revision = Revision, Outcome = Outcome, Phase = Phase,
-            Player = Player.View(), Opponent = Opponent.View(), Sequence = sequence, IsWild = Wild != null,
+            Player = Player.View(), Opponent = Opponent.View(), Sequence = sequence, IsWild = Wild != null, CanRun = CanRun,
             Party = _playerSide.Party.Select((actor, index) => new MonsterBattlePartyMember
                 { Slot = actor.PartySlot < 0 ? index : actor.PartySlot, Actor = actor.View() }).ToArray(),
             Moves = Enumerable.Range(0, 4).Select(slot => Player.Moves[slot]?.View(slot) ?? new MonsterBattleMoveView { Slot = slot, Name = "Empty slot", UnavailableReason = "Empty slot" }).ToArray(),

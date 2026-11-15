@@ -65,5 +65,7 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(14)] public MonsterBattlePhase Phase { get; set; }
     [Key(15)] public MonsterBattlePartyMember[] Party { get; set; } = [];
     [Key(16)] public bool IsWild { get; set; }
+    [Key(17)] public bool CanRun { get; set; }
+    [Key(18)] public bool AwaitingPresentationClose { get; set; }
 
 }
