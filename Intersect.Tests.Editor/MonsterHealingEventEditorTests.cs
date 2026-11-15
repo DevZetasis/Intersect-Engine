@@ -1,7 +1,9 @@
 using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
+using Intersect.Editor.Forms.Editors.Events;
 using Intersect.Editor.Forms.Editors.Events.Event_Commands;
+using Intersect.Framework.Core.GameObjects.Events;
 using Intersect.Framework.Core.GameObjects.Events.Commands;
 using Intersect.Framework.Core.GameObjects.Monsters;
 using NUnit.Framework;
@@ -37,5 +39,41 @@ public class MonsterHealingEventEditorTests
         }
         Assert.That(command.Scope, Is.EqualTo(MonsterHealingScope.AllOwned));
         Assert.That(command.Recovery, Is.EqualTo(MonsterRecovery.PP));
+    }
+    [Test]
+    public void BattleCommandStagesSpeciesAndLevelAndPrintsAllBranches()
+    {
+        if (Options.Instance == null) Options.LoadFromServer("{}");
+        var page = new EventPage();
+        var command = new StartMonsterBattleCommand(page.CommandLists);
+        page.CommandLists.Values.First().Add(command);
+        var species = new MonsterSpeciesDescriptor(Guid.NewGuid()) { Name = "Mossling" };
+        MonsterSpeciesDescriptor.Lookup.Set(species.Id, species);
+        try
+        {
+            using (var panel = new EventCommandStartMonsterBattle(command, null))
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var apply = panel.GetType().GetMethod("TryApply", flags)!;
+                Assert.That(apply.Invoke(panel, null), Is.EqualTo(false));
+                var select = Field(panel, "_species");
+                select.SelectedItem = select.Items.Cast<object>().Single(item => item.ToString() == "Mossling");
+                var level = (NumericUpDown)panel.GetType().GetField("_level", flags)!.GetValue(panel)!;
+                level.Value = 10;
+                Assert.That(command.SpeciesId, Is.EqualTo(Guid.Empty));
+                Assert.That(command.Level, Is.EqualTo(1));
+                Assert.That(apply.Invoke(panel, null), Is.EqualTo(true));
+            }
+
+            Assert.That(command.SpeciesId, Is.EqualTo(species.Id));
+            Assert.That(command.Level, Is.EqualTo(10));
+            using var list = new ListBox();
+            CommandPrinter.PrintCommandList(page, page.CommandLists.Values.First(), "", list, [], null!);
+            var rows = list.Items.Cast<string>().ToArray();
+            Assert.That(rows.Any(row => row.Contains("Mossling, level 10")), Is.True);
+            foreach (var branch in new[] { "Victory", "Defeat", "Escape" })
+                Assert.That(rows.Any(row => row.Contains("On " + branch)), Is.True);
+        }
+        finally { MonsterSpeciesDescriptor.Lookup.DeleteAt(species.Id); }
     }
 }

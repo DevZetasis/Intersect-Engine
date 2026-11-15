@@ -563,6 +563,9 @@ public partial class FrmEvent : Form
                 tmpCommand = new StartCommmonEventCommand();
 
                 break;
+            case EventCommandType.StartMonsterBattle:
+                tmpCommand = new StartMonsterBattleCommand(CurrentPage.CommandLists);
+                break;
             case EventCommandType.HealPlayerMonsters:
                 tmpCommand = new HealPlayerMonstersCommand();
                 break;
@@ -1225,6 +1228,9 @@ public partial class FrmEvent : Form
                 cmdWindow = new EventCommandStartCommonEvent((StartCommmonEventCommand)command, this);
 
                 break;
+            case EventCommandType.StartMonsterBattle:
+                cmdWindow = new EventCommandStartMonsterBattle((StartMonsterBattleCommand)command, this);
+                break;
             case EventCommandType.HealPlayerMonsters:
                 cmdWindow = new EventCommandHealPlayerMonsters((HealPlayerMonstersCommand)command, this);
                 break;
@@ -1509,6 +1515,9 @@ public partial class FrmEvent : Form
         var branchesToRemove = new List<Guid>();
         switch (cmd.Type)
         {
+            case EventCommandType.StartMonsterBattle:
+                branchesToRemove.AddRange(((StartMonsterBattleCommand)cmd).Branches());
+                break;
             case EventCommandType.ShowOptions:
                 branchesToRemove.AddRange(((ShowOptionsCommand)cmd).BranchIds);
 
@@ -1537,7 +1546,8 @@ public partial class FrmEvent : Form
 
         foreach (var branch in branchesToRemove)
         {
-            CurrentPage.CommandLists.Remove(branch);
+            if (branch != Guid.Empty && CurrentPage.CommandLists.Remove(branch, out var commands))
+                foreach (var child in commands) HandleRemoveCommand(child);
         }
     }
 

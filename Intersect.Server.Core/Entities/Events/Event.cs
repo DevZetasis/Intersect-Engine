@@ -5,6 +5,7 @@ using Intersect.Framework.Core.GameObjects.Events;
 using Intersect.Framework.Core.GameObjects.Events.Commands;
 using Intersect.Server.Localization;
 using Intersect.Server.Maps;
+using Intersect.Server.Monsters.Battles;
 using Intersect.Server.Networking;
 using Intersect.Utilities;
 using Microsoft.Extensions.Logging;
@@ -103,6 +104,7 @@ public partial class Event
                     Player.GlobalPageInstanceLookup.TryRemove(PageInstance.GlobalClone, out Event val);
                 }
                 PageInstance = null;
+                CancelPendingMonsterBattle();
                 CallStack.Clear();
                 PlayerHasDied = false;
                 if (HoldingPlayer)
@@ -166,6 +168,21 @@ public partial class Event
                         !Player.IsFading)
                     {
                         curStack.WaitingForResponse = CommandInstance.EventResponse.None;
+                    }
+
+                    if (curStack.WaitingForResponse == CommandInstance.EventResponse.MonsterBattle &&
+                        curStack.TryConsumeMonsterBattle(out var branch))
+                    {
+                        if (branch == null || !Player.InGame || Player.Client == null || Player.IsDead)
+                        {
+                            AbortMonsterBattleScript();
+                            curStack = null;
+                        }
+                        else
+                        {
+                            CallStack.Push(branch);
+                            curStack = branch;
+                        }
                     }
 
                     var commandsExecuted = 0;
@@ -326,6 +343,25 @@ public partial class Event
             {
                 PacketSender.SendEntityLeaveTo(Player, originalPageInstance);
             }
+        }
+    }
+
+    internal void CancelPendingMonsterBattle()
+    {
+        if (!CallStack.TryPeek(out var frame) || frame.MonsterBattle is not { } pending) return;
+
+        MonsterPracticeBattles.Registry.CancelEventBattle(Player.Id, pending.Id);
+        AbortMonsterBattleScript();
+    }
+
+    internal void AbortMonsterBattleScript()
+    {
+        CallStack.Clear();
+        PlayerHasDied = false;
+        if (HoldingPlayer)
+        {
+            HoldingPlayer = false;
+            if (Player.Client != null) PacketSender.SendReleasePlayer(Player, Id);
         }
     }
 

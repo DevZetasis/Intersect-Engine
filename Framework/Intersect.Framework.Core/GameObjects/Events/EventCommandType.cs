@@ -137,4 +137,5 @@ public enum EventCommandType
 
     Fade,
     HealPlayerMonsters,
+    StartMonsterBattle,
 }

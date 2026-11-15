@@ -13,9 +13,15 @@ public partial class Player
 {
     internal bool IsAvailableForMonsterPractice => InGame && Client != null && !IsDead && !IsBusy();
 
-    internal bool IsAvailableForWildEncounter => IsAvailableForMonsterPractice && MoveRoute == null &&
-        !IsCasting && CombatTimer <= Timing.Global.Milliseconds &&
+    private bool CanStartWildBattle => IsAvailableForMonsterPractice && MoveRoute == null &&
+        !IsCasting && CombatTimer <= Timing.Global.Milliseconds;
+
+    internal bool IsAvailableForWildEncounter => CanStartWildBattle &&
         !EventLookup.Values.Any(evt => evt.HoldingPlayer || evt.CallStack.Count > 0);
+
+    internal bool IsAvailableForEventMonsterBattle(Events.Event source) => CanStartWildBattle &&
+        ReferenceEquals(source.Player, this) && !EventLookup.Values.Any(evt =>
+            !ReferenceEquals(evt, source) && (evt.HoldingPlayer || evt.CallStack.Count > 0));
 
     private readonly MonsterEncounterCooldown _encounterCooldown = new();
     private long _encounterTransition;

@@ -54,6 +54,9 @@ public static partial class CommandPrinter
             {
                 switch (commandList[i].Type)
                 {
+                    case EventCommandType.StartMonsterBattle:
+                        PrintMonsterBattle(page, commandList, i, indent, lstEventCommands, mCommandProperties, map);
+                        break;
                     case EventCommandType.ShowOptions:
                         var cmd = (ShowOptionsCommand) commandList[i];
                         lstEventCommands.Items.Add(

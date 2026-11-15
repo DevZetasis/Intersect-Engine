@@ -1,5 +1,7 @@
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Server.Entities;
+using Intersect.Framework.Core.GameObjects.Events.Commands;
+using Intersect.Network.Packets.Server;
 using Intersect.Server.Database.PlayerData.Players;
 using Intersect.Server.Monsters.Calculations;
 using Microsoft.Extensions.Logging;
@@ -36,21 +38,41 @@ public static class MonsterPracticeBattles
     {
         // The caller holds the content/registry gate through resolution and start.
         if (!player.IsAvailableForWildEncounter || Registry.HasActive(player.Id)) return false;
+        return TryStartWildCore(player, encounter.SpeciesId, encounter.Level, random, encounter.TableId, null) != null;
+    }
+
+    internal static (Guid Id, Task<MonsterBattleOutcome> Result)? TryStartEventBattle(
+        Player player, StartMonsterBattleCommand command, Entities.Events.Event source)
+    {
+        lock (Registry.SyncRoot)
+        {
+            if (!player.IsAvailableForEventMonsterBattle(source) || Registry.HasActive(player.Id) ||
+                !command.IsValid(Options.Instance.Monsters.Battle.MaxLevel, id => MonsterSpeciesDescriptor.Get(id) != null))
+                return null;
+
+            var result = new TaskCompletionSource<MonsterBattleOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var id = TryStartWildCore(player, command.SpeciesId, command.Level, new SystemMonsterRandom(), null, result);
+            return id is { } battleId ? (battleId, result.Task) : null;
+        }
+    }
+
+    private static Guid? TryStartWildCore(Player player, Guid speciesId, int level, IMonsterRandom random,
+        Guid? tableId, TaskCompletionSource<MonsterBattleOutcome>? result)
+    {
         var service = MonsterRoster.CreateService();
         var party = service.GetPartyForBattle(player.Id);
         var lead = party.FirstOrDefault(member => member is { ConditionInitialized: true, CurrentHP: > 0 } &&
             member.MoveIds.Select((id, slot) => (id, slot)).Any(move => move.id is { } id &&
                 member.MovePP[move.slot].Current > 0 && MonsterMoveDescriptor.Get(id) is { } descriptor &&
                 descriptor.ExecutableInBattle));
-        if (lead == null) return false;
+        if (lead == null) return null;
 
-        Registry.Start(player.Id, () => CreateSession(player, service, party, lead,
-            encounter.SpeciesId, encounter.Level, random, encounter.TableId));
-        return true;
+        return Registry.Start(player.Id, () => CreateSession(player, service, party, lead,
+            speciesId, level, random, isWild: true, tableId: tableId), result);
     }
 
     private static MonsterBattleSession CreateSession(Player player, MonsterOwnershipService service, MonsterInstance[] party,
-        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, Guid? tableId = null)
+        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, bool isWild = false, Guid? tableId = null)
     {
         if (!owned.ConditionInitialized) throw new InvalidOperationException("Monster condition definitions are unavailable.");
         if (owned.CurrentHP == 0) throw new InvalidOperationException("This monster has fainted. Heal its HP before battling.");
@@ -106,6 +128,6 @@ public static class MonsterPracticeBattles
                     actor.PersistentStatus.Id, actor.PersistentStatus.Turns)).ToArray();
                 var revision = service.CommitBattle(player.Id, changes);
                 foreach (var actor in actors) expectedRevisions[actor.Id] = revision;
-            }, wild: tableId.HasValue ? generated : null, encounterTableId: tableId);
+            }, wild: isWild ? generated : null, encounterTableId: tableId);
     }
 }

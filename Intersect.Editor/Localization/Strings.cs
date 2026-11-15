@@ -2373,6 +2373,7 @@ Tick timer saved in server config.json.";
             {"releaseplayer", @"Release Player"},
             {"restorehp", @"Restore HP"},
             {"healplayermonsters", @"Heal Player Monsters"},
+            {"startmonsterbattle", @"Start Monster Battle"},
             {"restoremp", @"Restore MP"},
             {"setaccess", @"Set Access"},
             {"setmoveroute", @"Set Move Route"},

@@ -1029,6 +1029,7 @@ public partial class Player : Entity
         EventLookup.TryRemove(id, out outInstance);
         if (outInstance != null)
         {
+            outInstance.CancelPendingMonsterBattle();
             EventBaseIdLookup.TryRemove(outInstance.Descriptor.Id, out Event evt);
         }
         if (outInstance != null && outInstance.MapId != Guid.Empty)
