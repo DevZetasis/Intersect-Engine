@@ -1,5 +1,8 @@
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Server.Entities;
+using Intersect.Server.Entities.Events;
+using Intersect.Framework.Core.GameObjects.Items;
+using Intersect.Server.Networking;
 using Intersect.Framework.Core.GameObjects.Events.Commands;
 using Intersect.Network.Packets.Server;
 using Intersect.Server.Database.PlayerData.Players;
@@ -38,7 +41,7 @@ public static class MonsterPracticeBattles
     {
         // The caller holds the content/registry gate through resolution and start.
         if (!player.IsAvailableForWildEncounter || Registry.HasActive(player.Id)) return false;
-        return TryStartWildCore(player, encounter.SpeciesId, encounter.Level, random, encounter.TableId, null) != null;
+        return TryStartWildCore(player, encounter.SpeciesId, encounter.Level, random, encounter.TableId, null, allowCapture: true) != null;
     }
 
     internal static (Guid Id, Task<MonsterBattleOutcome> Result)? TryStartEventBattle(
@@ -51,13 +54,13 @@ public static class MonsterPracticeBattles
                 return null;
 
             var result = new TaskCompletionSource<MonsterBattleOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var id = TryStartWildCore(player, command.SpeciesId, command.Level, new SystemMonsterRandom(), null, result);
+            var id = TryStartWildCore(player, command.SpeciesId, command.Level, new SystemMonsterRandom(), null, result, command.AllowCapture);
             return id is { } battleId ? (battleId, result.Task) : null;
         }
     }
 
     private static Guid? TryStartWildCore(Player player, Guid speciesId, int level, IMonsterRandom random,
-        Guid? tableId, TaskCompletionSource<MonsterBattleOutcome>? result)
+        Guid? tableId, TaskCompletionSource<MonsterBattleOutcome>? result, bool allowCapture)
     {
         var service = MonsterRoster.CreateService();
         var party = service.GetPartyForBattle(player.Id);
@@ -68,11 +71,11 @@ public static class MonsterPracticeBattles
         if (lead == null) return null;
 
         return Registry.Start(player.Id, () => CreateSession(player, service, party, lead,
-            speciesId, level, random, isWild: true, tableId: tableId), result);
+            speciesId, level, random, isWild: true, tableId: tableId, allowCapture: allowCapture), result);
     }
 
     private static MonsterBattleSession CreateSession(Player player, MonsterOwnershipService service, MonsterInstance[] party,
-        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, bool isWild = false, Guid? tableId = null)
+        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, bool isWild = false, Guid? tableId = null, bool allowCapture = false)
     {
         if (!owned.ConditionInitialized) throw new InvalidOperationException("Monster condition definitions are unavailable.");
         if (owned.CurrentHP == 0) throw new InvalidOperationException("This monster has fainted. Heal its HP before battling.");
@@ -114,20 +117,56 @@ public static class MonsterPracticeBattles
             return Actor(member.Id, string.IsNullOrWhiteSpace(member.Nickname) ? template.Name : member.Nickname,
                 template, member.Level, member.IVs, member.EVs, nature, member.MoveIds, member);
         }).ToArray();
-        var opponentActor = Actor(generated.Id, opponent.Name, opponent, generated.Level, generated.IVs, new(),
+        var opponentActor = Actor(generated.Id, opponent.Name, opponent, generated.Level, generated.IVs, generated.EVs,
             generated.NatureId is { } selected ? MonsterNatureDescriptor.Get(selected) : null,
             generated.MoveIds, generatedGender: generated.GenderId);
+        MonsterOwnershipService.BattleCondition Condition(MonsterBattleCombatant actor) => new(actor.Id,
+            expectedRevisions.GetValueOrDefault(actor.Id), actor.HP, actor.MaximumHP,
+            actor.Moves.Select(move => new MonsterMovePP(move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray(),
+            actor.PersistentStatus.Id, actor.PersistentStatus.Turns);
+
+        IEnumerable<InventorySlot> CaptureSlots() =>
+            player.Items.Where(slot => slot is { Quantity: > 0, BagId: null, Bag: null, Descriptor: { ItemType: ItemType.MonsterCaptureDevice } item } &&
+                MonsterCaptureChance.IsDeviceMultiplier(item.CaptureMultiplier) &&
+                Conditions.MeetsConditionLists(item.UsageRequirements, player, null));
+
+        MonsterBattleSession.CaptureDevice? FindDevice(Guid id) =>
+            CaptureSlots().FirstOrDefault(slot => slot.ItemId == id)?.Descriptor is { } item
+                ? new(item.Name, item.CaptureMultiplier, item.GuaranteedCapture)
+                : null;
+
+        string? PersistCapture(MonsterBattleSession.CaptureTurn capture, IReadOnlyList<MonsterBattleCombatant> actors)
+        {
+            var (caught, slotIndex) = player.User.WithSaveLock(() =>
+            {
+                var slot = CaptureSlots().FirstOrDefault(slot => slot.ItemId == capture.ItemId)
+                    ?? throw new InvalidOperationException("The capture device is no longer in your inventory.");
+                var result = service.CommitCapture(player.Id, slot, capture.ItemId, capture.Revision,
+                    actors.Select(Condition).ToArray(), capture.Wild, capture.Target == null ? null : Condition(capture.Target));
+                return (result, slot.Slot);
+            });
+            foreach (var actor in actors) expectedRevisions[actor.Id] = capture.Revision;
+            try { PacketSender.SendInventoryItemUpdate(player, slotIndex); }
+            catch (Exception exception)
+            {
+                Intersect.Core.ApplicationContext.Context.Value?.Logger.LogWarning(exception, "Unable to send committed capture inventory change");
+            }
+            return caught == null ? null : $"{caught.Location.ToString().ToLowerInvariant()} slot {caught.Slot + 1}";
+        }
+
         return new(new(player.Id, ownParty, owned.Id), new(null, [opponentActor]), rules, random,
             background: string.IsNullOrWhiteSpace(opponent.BattleBackground) ? species.BattleBackground : opponent.BattleBackground,
             persistParty: actors =>
             {
-                var changes = actors.Select(actor => new MonsterOwnershipService.BattleCondition(actor.Id,
-                    expectedRevisions[actor.Id], actor.HP, actor.MaximumHP,
-                    actor.Moves.Select(move => new Database.PlayerData.Players.MonsterMovePP(
-                        move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray(),
-                    actor.PersistentStatus.Id, actor.PersistentStatus.Turns)).ToArray();
-                var revision = service.CommitBattle(player.Id, changes);
+                var revision = service.CommitBattle(player.Id, actors.Select(Condition).ToArray());
                 foreach (var actor in actors) expectedRevisions[actor.Id] = revision;
-            }, wild: isWild ? generated : null, encounterTableId: tableId);
+            }, wild: isWild ? generated : null, encounterTableId: tableId, baseCaptureChance: opponent.BaseCaptureChance,
+            captureDevices: allowCapture ? () => CaptureSlots().GroupBy(slot => slot.ItemId).Select(group => new MonsterBattleCaptureDevice
+            {
+                Id = group.Key,
+                Name = group.First().Descriptor.Name,
+                Quantity = (int)Math.Min(int.MaxValue, group.Sum(slot => (long)slot.Quantity)),
+            }).OrderBy(device => device.Name).ToArray() : null,
+            captureDevice: allowCapture ? FindDevice : null, persistCapture: allowCapture ? PersistCapture : null);
     }
 }

@@ -35,6 +35,7 @@ namespace Intersect.Server.Core
                 Parser.Register<ExitCommand>();
                 Parser.Register<GetVariableCommand>();
                 Parser.Register<GrantMonsterCommand>();
+                Parser.Register<GrantCaptureDeviceCommand>();
                 Parser.Register<InspectMonsterCommand>();
                 Parser.Register<InspectWildCommand>();
                 Parser.Register<HealMonsterCommand>();

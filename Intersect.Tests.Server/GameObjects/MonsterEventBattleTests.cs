@@ -74,7 +74,7 @@ public sealed class MonsterEventBattleTests
         var nested = new StartMonsterBattleCommand(loadedPage.CommandLists);
         loadedPage.CommandLists[loadedCommand.Escape].Add(nested);
         var data = loadedCommand.GetCopyData(loadedPage.CommandLists, copy);
-        Assert.That(copy.Count, Is.EqualTo(6));
+        Assert.That(copy.Count, Is.EqualTo(8));
         Assert.That(data, Does.Contain(nameof(StartMonsterBattleCommand)));
         var replacements = copy.Keys.ToDictionary(id => id, _ => Guid.NewGuid());
         var old = loadedCommand.Branches();

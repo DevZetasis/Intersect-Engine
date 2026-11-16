@@ -15,7 +15,16 @@ public static partial class Strings
         public static LocalizedString Placement = "{00} #{01}";
         public static LocalizedString Waiting = "Loading your monsters...";
         public static LocalizedString Counts = "Party: {00}/{01}   Stored: {02}";
-        public static LocalizedString Entry = "{00} #{01}: {02} â€” {03} â€” Lv. {04}";
+        private const string LegacyEntryTemplate = "{00} #{01}: {02} \u00e2\u20ac\u201d {03} \u00e2\u20ac\u201d Lv. {04}";
+        private static readonly LocalizedString DefaultEntry = "{00} #{01}: {02} \u2014 {03} \u2014 Lv. {04}";
+        public static LocalizedString Entry = DefaultEntry;
+
+        internal static string FormatEntry(string location, int slot, string name, string species, int level)
+        {
+            // Existing language files can still contain the original shipped template.
+            var template = Entry.ToString() == LegacyEntryTemplate ? DefaultEntry : Entry;
+            return template.ToString(location, slot, name, species, level);
+        }
         public static LocalizedString Party = "Party";
         public static LocalizedString Storage = "Storage";
         public static LocalizedString MissingSpecies = "Missing species ({00})";

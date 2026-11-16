@@ -330,6 +330,11 @@ public partial class User
         client?.LogAndDisconnect(default, nameof(SaveWithDebounce));
     }
 
+    internal T WithSaveLock<T>(Func<T> action)
+    {
+        lock (mSavingLock) return action();
+    }
+
     public UserSaveResult Save(bool force) => Save(force: force, create: false);
 
     public UserSaveResult Save(bool force = false, bool create = false) => Save(default, force, create);

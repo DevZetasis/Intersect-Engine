@@ -175,6 +175,10 @@ public partial class ItemDescriptor : DatabaseObject<ItemDescriptor>, IFolderabl
 
     public ItemType ItemType { get; set; }
 
+    public decimal CaptureMultiplier { get; set; } = 1m;
+
+    public bool GuaranteedCapture { get; set; }
+
     public string MalePaperdoll { get; set; } = string.Empty;
 
     public string Icon { get; set; } = string.Empty;

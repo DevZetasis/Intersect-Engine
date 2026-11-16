@@ -99,7 +99,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
 
             _active.Remove(owner);
             if (battle.Completion is { } completion && session.Outcome is
-                MonsterBattleOutcome.Victory or MonsterBattleOutcome.Defeat or MonsterBattleOutcome.Escaped)
+                MonsterBattleOutcome.Victory or MonsterBattleOutcome.Defeat or MonsterBattleOutcome.Escaped or MonsterBattleOutcome.Captured)
             {
                 var presentation = new PendingPresentation(session, completion);
                 _pending.Add(owner, presentation);

@@ -7,6 +7,12 @@ public static partial class Strings
 {
     public sealed partial class CommandsNamespace
     {
+        public readonly LocaleCommand GrantCaptureDevice = new()
+        {
+            Name = "grantcapturedevice", Help = "Grant inventory capture devices to an online character (server console only)",
+            Description = "grantcapturedevice <character-name-or-UUID> <item-UUID> <quantity>",
+        };
+
         public readonly LocaleCommand HealMonster = new() { Name = "healmonster", Help = "Restore owned monster HP/PP or cure status (server console only)", Description = "healmonster <individual-monster-UUID> <hp|pp|status|all>" };
         public readonly LocaleCommand StartMonsterBattle = new()
         {

@@ -37,4 +37,25 @@ public partial class InventorySlot : Item, ISlot, IPlayerOwned
 
     public int Slot { get; private set; }
 
+    // Confirms the atomic inventory write if the connection fails during commit.
+    [JsonIgnore]
+    public Guid? LastCaptureAttempt { get; private set; }
+
+    internal static InventorySlot CreateForCapture(Guid playerId, int slot) => new(slot) { PlayerId = playerId };
+
+    internal void StageCapture(Item item, Guid receipt)
+    {
+        Set(item.Quantity == 1 ? Item.None : item);
+        if (item.Quantity > 1) Quantity--;
+        LastCaptureAttempt = receipt;
+    }
+
+    internal void ConfirmCapture(InventorySlot savedSlot)
+    {
+        Id = savedSlot.Id;
+        PlayerId = savedSlot.PlayerId;
+        Set(savedSlot);
+        LastCaptureAttempt = savedSlot.LastCaptureAttempt;
+    }
+
 }

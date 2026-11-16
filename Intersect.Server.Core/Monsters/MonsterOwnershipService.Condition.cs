@@ -1,5 +1,6 @@
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Server.Database.PlayerData.Players;
+using Intersect.Server.Database.PlayerData;
 using Intersect.Server.Monsters.Calculations;
 using Microsoft.EntityFrameworkCore;
 
@@ -69,15 +70,7 @@ public sealed partial class MonsterOwnershipService
             try
             {
                 using var db = _createContext();
-                var monsters = db.OwnedMonsters.Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner &&
-                    m.Location == MonsterLocation.Party).ToDictionary(m => m.Id);
-                foreach (var change in changes)
-                {
-                    if (!monsters.TryGetValue(change.Id, out var monster) || monster.Revision != change.ExpectedRevision)
-                        throw new InvalidOperationException("Owned battle monster changed or is no longer in the party.");
-                    monster.SetCondition(change.HP, change.MaximumHP, change.PP, token);
-                    monster.SetStatus(change.StatusId, change.StatusTurns, token);
-                }
+                StageBattleConditions(db, owner, changes, token);
                 // EF commits all tracked updates in one transaction, including concurrency checks.
                 if (db.SaveChanges() <= 0) throw new InvalidOperationException("Turn condition was not committed.");
                 return token;
@@ -96,6 +89,21 @@ public sealed partial class MonsterOwnershipService
             }
         }
     }
+    private static void StageBattleConditions(PlayerContext db, Guid owner, IReadOnlyList<BattleCondition> changes, Guid token)
+    {
+        if (changes.Count == 0) return;
+        var ids = changes.Select(change => change.Id).ToArray();
+        var monsters = db.OwnedMonsters.Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner &&
+            m.Location == MonsterLocation.Party).ToDictionary(m => m.Id);
+        foreach (var change in changes)
+        {
+            if (!monsters.TryGetValue(change.Id, out var monster) || monster.Revision != change.ExpectedRevision)
+                throw new InvalidOperationException("Owned battle monster changed or is no longer in the party.");
+            monster.SetCondition(change.HP, change.MaximumHP, change.PP, token);
+            monster.SetStatus(change.StatusId, change.StatusTurns, token);
+        }
+    }
+
     internal void ReplaceMove(Guid owner, Guid monsterId, int slot, Guid? moveId)
     {
         lock (MonsterTypeRules.ContentGate)

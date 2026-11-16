@@ -244,7 +244,8 @@ public class MonsterIndividualTests
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes();
         var genderMigration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterGender();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(genderMigration.TargetModel, designTime: true);
+        var receiptMigration = new Intersect.Server.Migrations.MySql.Player.AddInventoryCaptureReceipt();
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(receiptMigration.TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -254,6 +255,9 @@ public class MonsterIndividualTests
             .Generate(genderMigration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(genderSql, Does.Contain("ADD `GenderId` char(36)"));
         Assert.That(genderSql, Does.Not.Contain("NOT NULL"));
+        var receiptSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(receiptMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(receiptSql, Does.Contain("ADD `LastCaptureAttempt` char(36)"));
         Assert.That(sql, Does.Not.Contain("DROP TABLE"));
     }
     [Test]

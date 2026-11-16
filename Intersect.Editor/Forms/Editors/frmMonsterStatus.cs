@@ -82,6 +82,7 @@ public sealed class FrmMonsterStatus : EditorForm
         Animation("Recovery animation", status => status.RemovedAnimationId, (status, id) => status.RemovedAnimationId = id);
         var folder = new DarkTextBox();
         AddField("Folder", folder);
+        AddCaptureSettings();
         _readFields[folder] = status => folder.Text = status.Folder;
         folder.TextChanged += (_, _) => { if (!_loading && _selected is { } status) status.Folder = folder.Text.Trim(); };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(5) };
@@ -94,6 +95,38 @@ public sealed class FrmMonsterStatus : EditorForm
         _description.TextChanged += EditFields;
         FormClosed += (_, _) => Globals.CurrentEditor = -1;
     }
+    private void AddCaptureSettings()
+    {
+        AddField("Capture Settings", new DarkLabel { AutoSize = true });
+        var multiplier = Number("Capture Chance Multiplier", 0m, MonsterCaptureChance.MaximumStatusMultiplier,
+            status => status.CaptureMultiplier, (status, value) => status.CaptureMultiplier = decimal.Round(value, 2), 2);
+
+        var baseChance = new DarkNumericUpDown { Minimum = 0, Maximum = 100, Value = 40 };
+        var hp = new DarkNumericUpDown { Minimum = 1, Maximum = 100, Value = 75 };
+        var device = new DarkNumericUpDown
+        {
+            Minimum = MonsterCaptureChance.MinimumDeviceMultiplier, Maximum = MonsterCaptureChance.MaximumDeviceMultiplier,
+            DecimalPlaces = 2, Increment = 0.05m, Value = 1m,
+        };
+        var preview = new DarkLabel { AutoSize = true };
+        AddField("Preview · Base Chance (%)", baseChance);
+        AddField("Preview · Remaining HP (%)", hp);
+        AddField("Preview · Device Multiplier", device);
+        AddField("Preview · Result", preview);
+
+        void ShowPreview()
+        {
+            var without = MonsterCaptureChance.Calculate(true, (int)baseChance.Value, (int)hp.Value, 100, [],
+                decimal.Round(device.Value, 2), false);
+            var with = MonsterCaptureChance.Calculate(true, (int)baseChance.Value, (int)hp.Value, 100,
+                [decimal.Round(multiplier.Value, 2)], decimal.Round(device.Value, 2), false);
+            preview.Text = $"Without status: {without:0.####}%\nWith status ({multiplier.Value:0.00}×): {with:0.####}%";
+        }
+        foreach (var input in new[] { multiplier, baseChance, hp, device })
+            input.ValueChanged += (_, _) => ShowPreview();
+        ShowPreview();
+    }
+
     private static DarkButton AddButton(Control parent, string text, EventHandler handler)
     {
         var button = new DarkButton { Text = text, AutoSize = true, MinimumSize = new Size(65, 26) };

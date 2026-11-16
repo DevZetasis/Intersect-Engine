@@ -60,6 +60,10 @@ public class MonsterHealingEventEditorTests
                 select.SelectedItem = select.Items.Cast<object>().Single(item => item.ToString() == "Mossling");
                 var level = (NumericUpDown)panel.GetType().GetField("_level", flags)!.GetValue(panel)!;
                 level.Value = 10;
+                var allowCapture = (CheckBox)panel.GetType().GetField("_allowCapture", flags)!.GetValue(panel)!;
+                Assert.That(allowCapture.Checked, Is.False);
+                allowCapture.Checked = true;
+                Assert.That(command.AllowCapture, Is.False);
                 Assert.That(command.SpeciesId, Is.EqualTo(Guid.Empty));
                 Assert.That(command.Level, Is.EqualTo(1));
                 Assert.That(apply.Invoke(panel, null), Is.EqualTo(true));
@@ -67,11 +71,12 @@ public class MonsterHealingEventEditorTests
 
             Assert.That(command.SpeciesId, Is.EqualTo(species.Id));
             Assert.That(command.Level, Is.EqualTo(10));
+            Assert.That(command.AllowCapture, Is.True);
             using var list = new ListBox();
             CommandPrinter.PrintCommandList(page, page.CommandLists.Values.First(), "", list, [], null!);
             var rows = list.Items.Cast<string>().ToArray();
             Assert.That(rows.Any(row => row.Contains("Mossling, level 10")), Is.True);
-            foreach (var branch in new[] { "Victory", "Defeat", "Escape" })
+            foreach (var branch in new[] { "Victory", "Defeat", "Escape", "Capture" })
                 Assert.That(rows.Any(row => row.Contains("On " + branch)), Is.True);
         }
         finally { MonsterSpeciesDescriptor.Lookup.DeleteAt(species.Id); }

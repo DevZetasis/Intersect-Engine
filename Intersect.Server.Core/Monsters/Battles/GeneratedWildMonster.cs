@@ -7,6 +7,9 @@ namespace Intersect.Server.Monsters.Battles;
 public sealed record GeneratedWildMonster(Guid Id, Guid SpeciesId, int Level, MonsterStatValues IVs,
     Guid? NatureId, Guid? GenderId, IReadOnlyList<Guid?> Moves)
 {
+    public long Experience { get; init; }
+    public MonsterStatValues EVs { get; init; } = new();
+
     internal Guid?[] MoveIds => Moves.ToArray();
 
     public static GeneratedWildMonster Create(MonsterSpeciesDescriptor species, int level, IMonsterRandom random)

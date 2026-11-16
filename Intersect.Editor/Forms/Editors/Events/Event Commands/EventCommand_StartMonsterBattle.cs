@@ -16,6 +16,7 @@ public sealed class EventCommandStartMonsterBattle : UserControl
     private readonly StartMonsterBattleCommand _command;
     private readonly FrmEvent? _editor;
     private readonly DarkComboBox _species = new() { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkCheckBox _allowCapture = new() { Dock = DockStyle.Top, Height = 28, Text = "Allow Capture" };
     private readonly DarkNumericUpDown _level = new() { Dock = DockStyle.Top, Minimum = 1 };
 
     public EventCommandStartMonsterBattle(StartMonsterBattleCommand command, FrmEvent? editor)
@@ -39,6 +40,8 @@ public sealed class EventCommandStartMonsterBattle : UserControl
         _level.Value = Math.Clamp(command.Level, 1, (int)_level.Maximum);
 
         var fields = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14) };
+        _allowCapture.Checked = command.AllowCapture;
+        fields.Controls.Add(_allowCapture);
         fields.Controls.Add(_level);
         fields.Controls.Add(new DarkLabel { Text = "Opponent level", Dock = DockStyle.Top, Height = 26 });
         fields.Controls.Add(_species);
@@ -73,6 +76,8 @@ public sealed class EventCommandStartMonsterBattle : UserControl
         if (!draft.IsValid(Options.Instance.Monsters.Battle.MaxLevel, id => MonsterSpeciesDescriptor.Get(id) != null)) return false;
         _command.SpeciesId = draft.SpeciesId;
         _command.Level = draft.Level;
+        if (_editor != null) _command.EnsureCaptureBranch(_editor.CurrentPage.CommandLists);
+        _command.AllowCapture = _allowCapture.Checked;
         return true;
     }
 }

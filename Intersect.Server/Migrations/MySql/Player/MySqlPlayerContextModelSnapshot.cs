@@ -517,6 +517,8 @@ namespace Intersect.Server.Migrations.MySql.Player
 
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.InventorySlot", b =>
                 {
+                    b.Property<Guid?>("LastCaptureAttempt").IsConcurrencyToken().HasColumnType("char(36)").UseCollation("ascii_general_ci");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)")

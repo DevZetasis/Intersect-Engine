@@ -23,6 +23,7 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkComboBox _frontBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _backBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _battleBackground = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkNumericUpDown _captureChance = new() { Minimum = 0, Maximum = 100, Value = 40 };
     private readonly DarkNumericUpDown _hp = StatInput();
     private readonly DarkNumericUpDown _attack = StatInput();
     private readonly DarkNumericUpDown _defense = StatInput();
@@ -73,6 +74,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.FrontBattleSprite, _frontBattleSprite);
         AddField(Strings.MonsterSpeciesEditor.BackBattleSprite, _backBattleSprite);
         AddField(Strings.MonsterSpeciesEditor.BattleBackground, _battleBackground);
+        AddField("Base Capture Chance (%)", _captureChance);
         AddField(Strings.MonsterSpeciesEditor.HP, _hp);
         AddField(Strings.MonsterSpeciesEditor.Attack, _attack);
         AddField(Strings.MonsterSpeciesEditor.Defense, _defense);
@@ -99,6 +101,7 @@ public sealed class FrmMonsterSpecies : EditorForm
             combo.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(combo == _battleBackground ? GameContentManager.TextureType.Image : GameContentManager.TextureType.Entity));
             combo.SelectedIndexChanged += EditFields;
         }
+        _captureChance.ValueChanged += EditFields;
         _name.TextChanged += EditFields;
         _description.TextChanged += EditFields;
         _folder.TextChanged += EditFields;
@@ -203,6 +206,7 @@ public sealed class FrmMonsterSpecies : EditorForm
                 if (!combo.Items.Contains(choice)) combo.Items.Add(choice);
                 combo.SelectedItem = choice;
             }
+            _captureChance.Value = Math.Clamp(_selected.BaseCaptureChance, 0, 100);
             _hp.Value = _selected.BaseStats.HP;
             _attack.Value = _selected.BaseStats.Attack;
             _defense.Value = _selected.BaseStats.Defense;
@@ -256,6 +260,7 @@ public sealed class FrmMonsterSpecies : EditorForm
         _selected.FrontBattleSprite = _frontBattleSprite.SelectedIndex <= 0 ? string.Empty : _frontBattleSprite.Text;
         _selected.BackBattleSprite = _backBattleSprite.SelectedIndex <= 0 ? string.Empty : _backBattleSprite.Text;
         _selected.BattleBackground = _battleBackground.SelectedIndex <= 0 ? string.Empty : _battleBackground.Text;
+        _selected.BaseCaptureChance = (int)_captureChance.Value;
         _selected.BaseStats.HP = (int)_hp.Value;
         _selected.BaseStats.Attack = (int)_attack.Value;
         _selected.BaseStats.Defense = (int)_defense.Value;

@@ -18,6 +18,7 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
     public string BackBattleSprite { get; set; } = string.Empty;
     public string BattleBackground { get; set; } = string.Empty;
     public string Folder { get; set; } = string.Empty;
+    public int BaseCaptureChance { get; set; } = 40;
 
     [NotMapped]
     public MonsterBaseStats BaseStats { get; set; } = new();
@@ -63,7 +64,7 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
 
     [NotMapped, JsonIgnore]
     public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Sprite != null &&
-                           FrontBattleSprite is { Length: <= 255 } && BackBattleSprite is { Length: <= 255 } && BattleBackground is { Length: <= 255 } && Folder != null && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
+                           FrontBattleSprite is { Length: <= 255 } && BackBattleSprite is { Length: <= 255 } && BattleBackground is { Length: <= 255 } && Folder != null && BaseCaptureChance is >= 0 and <= 100 && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
                            TypeIds.All(id => id != Guid.Empty) && TypeIds.Distinct().Count() == TypeIds.Length && Learnset != null &&
                            Learnset.All(entry => entry is { IsValid: true });
 

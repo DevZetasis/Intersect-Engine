@@ -10,7 +10,15 @@ internal sealed partial class PacketHandler
     public void HandlePacket(Client client, MonsterBattleActionPacket packet)
     {
         if (client.IsEditor || client.Entity is not { InGame: true } player) return;
-        try { Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Submit(player.Id, packet); }
+        try
+        {
+            if (packet.Kind == MonsterBattleActionKind.Capture)
+            {
+                lock (player.EntityLock)
+                    Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Submit(player.Id, packet);
+            }
+            else Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry.Submit(player.Id, packet);
+        }
         catch (InvalidOperationException exception) { Logger.LogDebug("Rejected monster battle action: {Reason}", exception.Message); }
         catch (Exception exception) { Logger.LogError(exception, "Monster battle resolution failed for {PlayerId}", player.Id); }
     }

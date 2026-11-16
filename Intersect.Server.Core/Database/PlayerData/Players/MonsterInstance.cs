@@ -30,6 +30,24 @@ public sealed partial class MonsterInstance
         CreatedAtUtcMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
+    internal static MonsterInstance FromCapture(Guid owner, Guid request, MonsterLocation location, int slot,
+        Intersect.Server.Monsters.Battles.GeneratedWildMonster wild,
+        Intersect.Server.Monsters.MonsterOwnershipService.BattleCondition condition,
+        MonsterBattleRules rules)
+    {
+        var monster = new MonsterInstance(owner, wild.SpeciesId, request, location, slot, wild.IVs, wild.NatureId, wild.GenderId)
+        {
+            Id = wild.Id,
+            Level = wild.Level,
+            Experience = wild.Experience,
+        };
+        monster.SetEVs(wild.EVs, rules);
+        monster.InitializeMoves(condition.PP.Select(move => move.MoveId).ToArray());
+        monster.SetCondition(condition.HP, condition.MaximumHP, condition.PP, request);
+        monster.SetStatus(condition.StatusId, condition.StatusTurns, request);
+        return monster;
+    }
+
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public Guid Id { get; private set; }
     public Guid SpeciesId { get; private set; }

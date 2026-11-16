@@ -138,7 +138,7 @@ public sealed class MonsterEncounterTests
         {
             var species = new MonsterSpeciesDescriptor(Guid.NewGuid());
             var table = Table(species.Id, species.Id);
-            var map = new MapController(Guid.NewGuid()) { Name = "Existing Map" };
+            var map = new MapController(Guid.NewGuid()) { Name = "Route 1 \u2014 For\u00EAt \u96EA" };
             using (var db = new SqliteGameContext(options))
             {
                 db.GetService<IMigrator>().Migrate("20261113000000_AddMonsterGenders");
@@ -146,6 +146,7 @@ public sealed class MonsterEncounterTests
                 db.Database.Migrate();
                 Assert.That(db.Database.HasPendingModelChanges(), Is.False);
                 var existing = db.Maps.Single();
+                Assert.That(existing.Name, Is.EqualTo(map.Name));
                 Assert.That(existing.Encounters.Mode, Is.EqualTo(MapEncounterMode.Disabled));
                 db.MonsterSpecies.Add(species);
                 db.MonsterEncounterTables.Add(table);

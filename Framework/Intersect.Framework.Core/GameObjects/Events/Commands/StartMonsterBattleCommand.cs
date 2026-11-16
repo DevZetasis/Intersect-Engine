@@ -12,6 +12,7 @@ public sealed class StartMonsterBattleCommand : EventCommand
         Victory = Guid.NewGuid();
         Defeat = Guid.NewGuid();
         Escape = Guid.NewGuid();
+        Capture = Guid.NewGuid();
         foreach (var branch in Branches()) commandLists.Add(branch, []);
     }
 
@@ -22,7 +23,19 @@ public sealed class StartMonsterBattleCommand : EventCommand
     public Guid Defeat { get; set; }
     public Guid Escape { get; set; }
 
-    public Guid[] Branches() => [Victory, Defeat, Escape];
+    public bool AllowCapture { get; set; }
+    public Guid Capture { get; set; }
+
+    public Guid[] Branches() => Capture == Guid.Empty && !AllowCapture
+        ? [Victory, Defeat, Escape]
+        : [Victory, Defeat, Escape, Capture];
+
+    public void EnsureCaptureBranch(Dictionary<Guid, List<EventCommand>> commandLists)
+    {
+        if (Capture != Guid.Empty && commandLists.ContainsKey(Capture)) return;
+        Capture = Guid.NewGuid();
+        commandLists.Add(Capture, []);
+    }
 
     public bool IsValid(int maxLevel, Func<Guid, bool> speciesExists) =>
         SpeciesId != Guid.Empty && speciesExists(SpeciesId) && Level >= 1 && Level <= maxLevel;
@@ -44,5 +57,6 @@ public sealed class StartMonsterBattleCommand : EventCommand
         Victory = idDict.GetValueOrDefault(Victory, Victory);
         Defeat = idDict.GetValueOrDefault(Defeat, Defeat);
         Escape = idDict.GetValueOrDefault(Escape, Escape);
+        Capture = idDict.GetValueOrDefault(Capture, Capture);
     }
 }

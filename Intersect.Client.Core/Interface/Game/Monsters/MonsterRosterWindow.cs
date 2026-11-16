@@ -216,6 +216,8 @@ public sealed class MonsterRosterWindow : Window
     public void Update()
     {
         if (!IsVisibleInTree) return;
+        if (Globals.Me is { MonsterBattleState: { Outcome: MonsterBattleOutcome.Captured } capture } player &&
+            player.PresentedCaptureRevision != capture.Revision) return;
         if (Globals.Me?.MonsterRoster is not { } roster || roster.PlayerId != Globals.Me.Id)
         {
             if (_displayed != null)
@@ -243,7 +245,7 @@ public sealed class MonsterRosterWindow : Window
             row.Height = 32;
             row.SetCellText(1, Strings.Monsters.Level.ToString(monster.Level));
             row.SetCellText(2, placement);
-            row.SetToolTipText(Strings.Monsters.Entry.ToString(
+            row.SetToolTipText(Strings.Monsters.FormatEntry(
                 monster.Location == MonsterLocation.Party ? Strings.Monsters.Party : Strings.Monsters.Storage,
                 monster.Slot + 1, name, speciesName, monster.Level));
             for (var column = 0; column < 3; column++)
@@ -301,7 +303,9 @@ public sealed class MonsterRosterWindow : Window
         _nature.Text = data == null ? string.Empty : Strings.Monsters.Nature.ToString(natureName);
         _nature.SetToolTipText(_nature.Text);
         _gender.Text = data == null ? "" : $"Gender: {MonsterGenderText.Format(data.GenderId, data.GenderName, data.GenderSymbol, _gender.Font, _gender.FontSize)}";
-        _gender.SetToolTipText(_gender.Text);
+        var genderTooltipFont = _gender.TooltipFont ?? GameContentManager.Current.GetFont("sourcesansproblack");
+        _gender.SetToolTipText(data == null ? "" :
+            $"Gender: {MonsterGenderText.Format(data.GenderId, data.GenderName, data.GenderSymbol, genderTooltipFont, _gender.TooltipFontSize)}");
         _calculationStatus.Text = data == null ? Strings.Monsters.DetailsUnavailable
             : data.CalculatedStats is not { Length: 6 } ? Strings.Monsters.StatsUnavailable : string.Empty;
         for (var i = 0; i < 6; i++)

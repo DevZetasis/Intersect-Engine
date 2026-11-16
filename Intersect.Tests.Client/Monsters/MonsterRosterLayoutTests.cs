@@ -12,11 +12,15 @@ using Intersect.Client.Interface.Game.Monsters;
 using Intersect.Core;
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Framework.Core.GameObjects.Animations;
+using Intersect.Network.Packets.Client;
 using Intersect.Network.Packets.Server;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 using Control = Intersect.Client.Framework.Gwen.Control.Base;
+using SpriteFont = Microsoft.Xna.Framework.Graphics.SpriteFont;
+using AtlasRectangle = Microsoft.Xna.Framework.Rectangle;
+using AtlasVector = Microsoft.Xna.Framework.Vector3;
 
 namespace Intersect.Tests.Client.Monsters;
 
@@ -117,6 +121,25 @@ public class MonsterRosterLayoutTests
             Label Named(string name) => Descendants(window).OfType<Label>().Single(label => label.Name == name);
             Assert.That(Named("SelectedNature").Text, Does.Contain("Patient custom nature"));
             Assert.That(Named("SelectedGender").Text, Is.EqualTo("Gender: Astral"));
+            var genderLabel = Named("SelectedGender");
+            genderLabel.Font = genderLabel.TooltipFont = new SymbolFont();
+            foreach (var (id, name, symbol, expected) in new[]
+            {
+                (MonsterGenderDescriptor.DefaultMale, "Male", "\u2642", "Gender: Male \u2642"),
+                (MonsterGenderDescriptor.DefaultFemale, "Female", "\u2640", "Gender: Female \u2640"),
+                (MonsterGenderDescriptor.DefaultGenderless, "Genderless", "", "Gender: Genderless"),
+                (Guid.NewGuid(), "Astral", "*", "Gender: Astral *"),
+                (Guid.NewGuid(), "Astral", "\u2604", "Gender: Astral"),
+            })
+            {
+                first.Details.GenderId = id;
+                first.Details.GenderName = name;
+                first.Details.GenderSymbol = symbol;
+                list.SelectedRow = list[1];
+                list.SelectedRow = row;
+                Assert.That(genderLabel.Text, Is.EqualTo(expected));
+                Assert.That(((Label)genderLabel.Tooltip).Text, Is.EqualTo(expected));
+            }
             Assert.That(Named("SelectedCondition").Text, Does.Contain("25 / 100"));
             Assert.That(Named("SelectedMovePP").Text, Does.Contain("3/20"));
             Assert.That(Descendants(window).OfType<ProgressBar>().Single(b => b.Name == "SelectedHPBar").Value, Is.EqualTo(.25f));
@@ -223,11 +246,18 @@ public class MonsterRosterLayoutTests
                 var handlerType = typeof(Player).Assembly.GetType("Intersect.Client.Networking.PacketHandler")!;
                 var packetHandler = RuntimeHelpers.GetUninitializedObject(handlerType);
                 var applyBattle = handlerType.GetMethod("HandlePacket", [typeof(Intersect.Network.IPacketSender), typeof(MonsterBattleStatePacket)])!;
+                Label BattleLabel(string name) => Descendants(battleWindow).OfType<Label>().Single(label => label.Name == name);
+                BattleLabel("PlayerName").Font = BattleLabel("OpponentName").Font = genderLabel.Font;
                 var state = BattleState(1, 1);
+                (state.Player.GenderId, state.Player.GenderName, state.Player.GenderSymbol) =
+                    (MonsterGenderDescriptor.DefaultMale, "Male", "\u2642");
+                (state.Opponent.GenderId, state.Opponent.GenderName, state.Opponent.GenderSymbol) =
+                    (MonsterGenderDescriptor.DefaultFemale, "Female", "\u2640");
                 applyBattle.Invoke(packetHandler, [null, state]);
                 battleWindow.Update();
                 for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
-                Label BattleLabel(string name) => Descendants(battleWindow).OfType<Label>().Single(label => label.Name == name);
+                Assert.That(BattleLabel("PlayerName").Text, Does.Contain("[Male \u2642]"));
+                Assert.That(BattleLabel("OpponentName").Text, Does.Contain("[Female \u2640]"));
                 Assert.That(BattleLabel("PlayerHPValue").Text, Is.EqualTo("HP 25 / 50"));
                 Assert.That(BattleLabel("PlayerHP").Text, Is.Empty);
                 Assert.That(((ProgressBar)BattleLabel("PlayerHP")).Value, Is.EqualTo(.5f));
@@ -289,8 +319,8 @@ public class MonsterRosterLayoutTests
                 Assert.That(((Button)BattleLabel("CloseBattleButton")).IsDisabled, Is.True);
                 var submit = typeof(MonsterBattleWindow).GetMethod("Submit", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 var moveKind = Intersect.Network.Packets.Client.MonsterBattleActionKind.Move;
-                submit.Invoke(battleWindow, [moveKind, 1, Guid.Empty]); Assert.That(sent, Is.Empty);
-                submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty]); submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty]);
+                submit.Invoke(battleWindow, [moveKind, 1, Guid.Empty, Guid.Empty]); Assert.That(sent, Is.Empty);
+                submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty, Guid.Empty]); submit.Invoke(battleWindow, [moveKind, 0, Guid.Empty, Guid.Empty]);
                 Assert.That(sent.Count, Is.EqualTo(1));
                 Assert.That(sent[0].BattleId, Is.EqualTo(battleId));
                 Assert.That(((Button)BattleLabel("BattleMove0")).IsDisabled, Is.True);
@@ -485,8 +515,182 @@ public class MonsterRosterLayoutTests
                 Assert.That(acknowledgment.Kind, Is.EqualTo(Intersect.Network.Packets.Client.MonsterBattleActionKind.PresentationClosed));
                 Assert.That(acknowledgment.BattleId, Is.EqualTo(victory.BattleId));
                 Assert.That(acknowledgment.Revision, Is.EqualTo(victory.Revision));
-                player.MonsterBattleState = null; battleWindow.Update(); Assert.That(battleWindow.IsVisibleInTree, Is.False);
-                Assert.That(sent.Count, Is.EqualTo(1), "Reset cannot acknowledge a result.");
+                sent.Clear();
+                var sequence = 15;
+                var deviceId = Guid.NewGuid();
+                var deviceName = "CaptureDevice" + deviceId;
+                Panel Menu(string name) => Descendants(battleWindow).OfType<Panel>().Single(panel => panel.Name == name);
+                var itemRows = Menu("BattleItemRows");
+                var processDeletes = typeof(Canvas).GetMethod("ProcessDelayedDeletes", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var menus = new[] { "BattleMainMenu", "BattleFightMenu", "BattlePartyMenu", "BattleItemsMenu" };
+                void Push(MonsterBattleStatePacket snapshot)
+                {
+                    applyBattle.Invoke(packetHandler, [null, snapshot]);
+                    battleWindow.Update();
+                }
+                void AssertMenu(string? visible)
+                {
+                    for (var i = 0; i < 3; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
+                    foreach (var paneName in menus)
+                        Assert.That(Menu(paneName).IsVisibleInTree, Is.EqualTo(paneName == visible), paneName);
+                    if (visible == null) return;
+                    var commands = Menu("BattleCommands");
+                    Assert.That(Menu(visible).Size, Is.EqualTo(commands.Size));
+                }
+                void AssertMain()
+                {
+                    AssertMenu("BattleMainMenu");
+                    foreach (var name in new[] { "FightButton", "BagButton", "MonstersBattleButton", "RunButton" })
+                    {
+                        var button = BattleButton(name);
+                        Assert.That(button.IsVisibleInTree && !button.IsDisabled, Is.True, name);
+                        var point = button.ToCanvas(button.Width / 2, button.Height / 2);
+                        Assert.That(canvas.GetComponentAt(point), Is.SameAs(button), name);
+                    }
+                }
+                MonsterBattleStatePacket Wild(int quantity, MonsterBattleStatePacket? previous = null,
+                    MonsterBattleOutcome outcome = MonsterBattleOutcome.Active)
+                {
+                    var snapshot = BattleState(++sequence, previous?.Turn + 1 ?? 1, outcome);
+                    snapshot.BattleId = previous?.BattleId ?? Guid.NewGuid();
+                    snapshot.PreviousRevision = previous?.Revision ?? Guid.Empty;
+                    snapshot.Opponent.Id = previous?.Opponent.Id ?? Guid.NewGuid();
+                    snapshot.IsWild = true;
+                    snapshot.CanRun = snapshot.AllowsCapture = outcome == MonsterBattleOutcome.Active;
+                    if (quantity > 0)
+                        snapshot.CaptureDevices = [new() { Id = deviceId, Name = "Basic Capture Device", Quantity = quantity }];
+                    return snapshot;
+                }
+
+                Push(Wild(0));
+                Assert.That(BattleButton("BagButton").IsDisabled, Is.True);
+                Assert.That(BattleButton("BagButton").Text, Does.Contain("no capture devices"));
+
+                // Old saved layouts use Fill for each submenu.
+                var oldMenuLayout = JObject.Parse(battleWindow.GetJsonUI(true));
+                foreach (var paneName in menus)
+                    oldMenuLayout.SelectTokens("$.." + paneName).Single()["Dock"] = "Fill";
+                content.LayoutJson = oldMenuLayout.ToString();
+                battleWindow.LoadJsonUi(GameContentManager.UI.InGame, $"{width}x{height}", saveOutput: false);
+                content.LayoutJson = null;
+
+                foreach (var (outcome, endButton, actionKind) in new[]
+                {
+                    (MonsterBattleOutcome.Escaped, "RunButton", MonsterBattleActionKind.Run),
+                    (MonsterBattleOutcome.Forfeit, "ForfeitButton", MonsterBattleActionKind.Forfeit),
+                    (MonsterBattleOutcome.Captured, deviceName, MonsterBattleActionKind.Capture),
+                })
+                {
+                    sent.Clear();
+                    var current = Wild(3);
+                    Push(current);
+                    AssertMain();
+                    for (var quantity = 3; quantity >= 2; quantity--)
+                    {
+                        ClickBattle("BagButton");
+                        AssertMenu("BattleItemsMenu");
+                        var device = BattleButton(deviceName);
+                        var deviceDisposals = 0;
+                        device.Disposed += (_, _) => deviceDisposals++;
+                        Assert.That(device.Text, Does.Contain($"×{quantity}"));
+                        Assert.That(device.Width, Is.GreaterThanOrEqualTo(200));
+                        Assert.That(device.Height, Is.GreaterThanOrEqualTo(32));
+                        ClickBattle("BattleItemsBack");
+                        AssertMain();
+                        ClickBattle("BagButton");
+                        Assert.That(BattleButton(deviceName), Is.SameAs(device));
+
+                        sent.Clear();
+                        ClickBattle(deviceName);
+                        ClickBattle(deviceName);
+                        Assert.That(sent.Single().Kind, Is.EqualTo(MonsterBattleActionKind.Capture));
+                        Assert.That(sent.Single().ItemId, Is.EqualTo(deviceId));
+                        Assert.That(sent.Single().Revision, Is.EqualTo(current.Revision));
+                        AssertMenu(null);
+
+                        var next = Wild(quantity - 1, current);
+                        next.Player.HP = current.Player.HP - 1;
+                        next.Events = [
+                            new() { Kind = MonsterBattleEventKind.CaptureDeviceUsed, Order = 0, ActorId = first.Id, TargetId = next.Opponent.Id, Text = "Attempt" },
+                            new() { Kind = MonsterBattleEventKind.CaptureFailed, Order = 1, ActorId = first.Id, TargetId = next.Opponent.Id, Text = "Broke free" },
+                            new() { Kind = MonsterBattleEventKind.MoveUsed, Order = 2, ActorId = next.Opponent.Id, TargetId = first.Id, Text = "Retaliation" },
+                            new() { Kind = MonsterBattleEventKind.DamageApplied, Order = 3, ActorId = next.Opponent.Id, TargetId = first.Id,
+                                HPBefore = current.Player.HP, HPAfter = next.Player.HP, Text = "Damage" },
+                        ];
+                        Push(next);
+                        Assert.That(playback.Text, Is.EqualTo("Attempt"));
+                        playback.Advance();
+                        Assert.That(playback.Text, Is.EqualTo("Broke free"));
+                        playback.Advance();
+                        Assert.That(playback.Text, Is.EqualTo("Retaliation"));
+                        playback.Advance();
+                        Assert.That(playback.PlayerHP, Is.EqualTo(current.Player.HP));
+                        playback.Advance();
+                        battleWindow.Update();
+                        Assert.That(playback.PlayerHP, Is.EqualTo(next.Player.HP));
+                        Assert.That(BattleLabel("BattleStatus").Text, Does.Contain($"Turn {next.Turn}"));
+                        AssertMain();
+                        Assert.That(itemRows.Children, Is.Empty);
+                        Assert.That(device.IsVisibleInTree, Is.False);
+                        processDeletes.Invoke(canvas, null);
+                        Assert.That(deviceDisposals, Is.EqualTo(1));
+
+                        ClickBattle("FightButton");
+                        AssertMenu("BattleFightMenu");
+                        Assert.That(BattleButton("BattleMove0").IsDisabled, Is.False);
+                        ClickBattle("BackBattleButton");
+                        ClickBattle("MonstersBattleButton");
+                        AssertMenu("BattlePartyMenu");
+                        ClickBattle("BattlePartyBack");
+                        AssertMain();
+                        current = next;
+                    }
+                    ClickBattle("BagButton");
+                    Assert.That(BattleButton(deviceName).Text, Does.Contain("×1"));
+                    if (outcome != MonsterBattleOutcome.Captured) ClickBattle("BattleItemsBack");
+                    sent.Clear();
+                    ClickBattle(endButton);
+                    Assert.That(sent.Single().Kind, Is.EqualTo(actionKind));
+                    var terminal = Wild(0, current, outcome);
+                    terminal.AwaitingPresentationClose = outcome != MonsterBattleOutcome.Forfeit;
+                    if (outcome == MonsterBattleOutcome.Captured)
+                    {
+                        terminal.Events = [
+                            new() { Kind = MonsterBattleEventKind.CaptureDeviceUsed, Order = 0, ActorId = first.Id, TargetId = terminal.Opponent.Id, Text = "Attempt" },
+                            new() { Kind = MonsterBattleEventKind.BattleFinished, Order = 1, Text = "Captured in party slot 2." },
+                        ];
+                    }
+                    Push(terminal);
+                    if (outcome == MonsterBattleOutcome.Captured)
+                    {
+                        Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.True);
+                        ClickBattle("SkipButton");
+                    }
+                    Assert.That(BattleButton("CloseBattleButton").IsDisabled, Is.False);
+                    ClickBattle("CloseBattleButton");
+                    Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                    Assert.That(itemRows.Children, Is.Empty);
+                    Assert.That(sent.Count, Is.EqualTo(terminal.AwaitingPresentationClose ? 2 : 1));
+                    if (terminal.AwaitingPresentationClose)
+                        Assert.That(sent.Last().Kind, Is.EqualTo(MonsterBattleActionKind.PresentationClosed));
+                }
+
+                // A same-revision rejection can remove the final available device.
+                var lastDevice = Wild(1);
+                Push(lastDevice);
+                ClickBattle("BagButton");
+                ClickBattle(deviceName);
+                var correction = Wild(0, lastDevice);
+                correction.Turn = lastDevice.Turn;
+                correction.Revision = lastDevice.Revision;
+                correction.IsCorrection = true;
+                Push(correction);
+                AssertMenu("BattleMainMenu");
+                Assert.That(BattleButton("BagButton").IsDisabled, Is.True);
+                player.MonsterBattleState = null;
+                battleWindow.Update();
+                Assert.That(battleWindow.IsVisibleInTree, Is.False);
+                Assert.That(itemRows.Children, Is.Empty);
             }
             finally { Intersect.Client.Interface.Interface.InputBlockingComponents.Remove(battleWindow); }
 
@@ -522,6 +726,16 @@ public class MonsterRosterLayoutTests
         };
     }
 
+    // Gwen measures the real labels with its headless renderer; SpriteFont supplies the glyph map.
+    private sealed class SymbolFont() : Font<SpriteFont>("Symbol test font", [14])
+    {
+        protected override FontSizeRenderer<SpriteFont> CreateRendererFor(int size) =>
+            new Intersect.Client.MonoGame.Graphics.SpriteFontRenderer(new SpriteFont(null!,
+                [new AtlasRectangle(), new AtlasRectangle(), new AtlasRectangle()],
+                [new AtlasRectangle(), new AtlasRectangle(), new AtlasRectangle()],
+                ['*', '\u2640', '\u2642'], 14, 0, [new AtlasVector(), new AtlasVector(), new AtlasVector()], null));
+    }
+
     private sealed class FontStub : IFont
     {
         public string Name => "testfont";
@@ -530,19 +744,19 @@ public class MonsterRosterLayoutTests
         public int GetNextFontSize(int startSize, int direction, int limit = 0) => startSize + direction;
     }
     // Deterministic text metrics exercise real Gwen docking/table layout without a GPU or files.
-    private sealed class TextRenderer : Intersect.Client.Framework.Gwen.Renderer.Base
+    internal sealed class TextRenderer : Intersect.Client.Framework.Gwen.Renderer.Base
     {
         public override Point MeasureText(IFont? font, int fontSize, string? text, float scale = 1) =>
             font == null ? Point.Empty : new Point((int)((text?.Length ?? 0) * fontSize * .55f * scale), (int)(fontSize * 1.4f * scale));
     }
-    private sealed class LayoutSkin(Intersect.Client.Framework.Gwen.Renderer.Base renderer)
+    internal sealed class LayoutSkin(Intersect.Client.Framework.Gwen.Renderer.Base renderer)
         : Intersect.Client.Framework.Gwen.Skin.Base(renderer);
 
-    private sealed class MemoryContent : GameContentManager
+    internal sealed class MemoryContent : GameContentManager
     {
         public IFont Font { get; } = new FontStub();
         private readonly IGameTexture _texture = DispatchProxy.Create<IGameTexture, TextureStub>();
-        public override IGameTexture? GetTexture(TextureType type, string name) => type is TextureType.Entity or TextureType.Animation ? _texture : null;
+        public override IGameTexture? GetTexture(TextureType type, string name) => type is TextureType.Entity or TextureType.Animation || type == TextureType.Item && name == "test.png" ? _texture : null;
         public override IFont? GetFont(string? name) => Font;
         public string? LayoutJson { get; set; }
         public override bool GetLayout(UI stage, string name, string resolution, bool skipCache, Action<string, bool> layoutHandler)

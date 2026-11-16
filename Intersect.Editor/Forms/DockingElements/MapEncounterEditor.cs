@@ -120,7 +120,7 @@ internal sealed class MapEncounterEditor : DarkForm
         _draft = map.Encounters?.Copy() ?? new();
         var width = Options.Instance.Map.MapWidth;
         var height = Options.Instance.Map.MapHeight;
-        Text = $"Map Encounters â€” {map.Name}";
+        Text = $"Map Encounters \u2014 {map.Name}";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(760, 740);
         MinimumSize = new Size(625, 450);

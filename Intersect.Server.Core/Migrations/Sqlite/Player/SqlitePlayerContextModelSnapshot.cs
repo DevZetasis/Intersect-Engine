@@ -472,6 +472,8 @@ namespace Intersect.Server.Migrations.Sqlite.Player
 
             modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.InventorySlot", b =>
                 {
+                    b.Property<Guid?>("LastCaptureAttempt").IsConcurrencyToken().HasColumnType("TEXT");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");

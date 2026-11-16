@@ -1,11 +1,9 @@
 using Intersect.Enums;
 using Intersect.Client.General;
 using Intersect.Client.Localization;
-using Intersect.Core;
 using Intersect.Framework.Core.GameObjects.Items;
 using Intersect.GameObjects.Ranges;
 using Intersect.Utilities;
-using Microsoft.Extensions.Logging;
 using Intersect.Client.Framework.File_Management;
 using Intersect.Client.Framework.Gwen.Input;
 
@@ -158,51 +156,38 @@ public partial class ItemDescriptionWindow() : DescriptionWindowBase(Interface.G
         var header = AddHeader();
 
         // Set up the icon, if we can load it.
-        var tex = GameContentManager.Current.GetTexture(Framework.Content.TextureType.Item, _itemDescriptor.Icon);
-        if (tex != null)
+        if (!string.IsNullOrWhiteSpace(_itemDescriptor.Icon) &&
+            GameContentManager.Current.GetTexture(Framework.Content.TextureType.Item, _itemDescriptor.Icon) is { } texture)
         {
-            header.SetIcon(tex, _itemDescriptor.Color);
+            header.SetIcon(texture, _itemDescriptor.Color);
         }
 
         // Set up the header as the item name.
         CustomColors.Items.Rarities.TryGetValue(_itemDescriptor.Rarity, out var rarityColor);
         header.SetTitle(_itemDescriptor.Name, rarityColor ?? Color.White);
 
-        // Set up the description telling us what type of item this is.
-        // if equipment, also list what kind.
-        Strings.ItemDescription.ItemTypes.TryGetValue((int)_itemDescriptor.ItemType, out var typeDesc);
-        if (_itemDescriptor.ItemType == ItemType.Equipment)
+        if (Strings.ItemDescription.ItemTypes.TryGetValue((int)_itemDescriptor.ItemType, out var typeLabel) &&
+            typeLabel?.ToString() is { } subtitle && !string.IsNullOrWhiteSpace(subtitle))
         {
-            var equipSlot = Options.Instance.Equipment.Slots[_itemDescriptor.EquipmentSlot];
-            var extraInfo = equipSlot;
-            if (_itemDescriptor.EquipmentSlot == Options.Instance.Equipment.WeaponSlot && _itemDescriptor.TwoHanded)
+            var equipment = Options.Instance.Equipment;
+            if (_itemDescriptor.ItemType == ItemType.Equipment &&
+                _itemDescriptor.EquipmentSlot >= 0 && _itemDescriptor.EquipmentSlot < equipment.Slots.Count &&
+                equipment.Slots[_itemDescriptor.EquipmentSlot] is { } slot && !string.IsNullOrWhiteSpace(slot))
             {
-                extraInfo = $"{Strings.ItemDescription.TwoHand} {equipSlot}";
+                var twoHand = _itemDescriptor.EquipmentSlot == equipment.WeaponSlot && _itemDescriptor.TwoHanded
+                    ? Strings.ItemDescription.TwoHand?.ToString()
+                    : null;
+                var extraInfo = string.IsNullOrWhiteSpace(twoHand) ? slot : $"{twoHand} {slot}";
+                subtitle = $"{subtitle} - {extraInfo}";
             }
-            header.SetSubtitle($"{typeDesc} - {extraInfo}", Color.White);
-        }
-        else
-        {
-            header.SetSubtitle(typeDesc, Color.White);
+
+            header.SetSubtitle(subtitle, Color.White);
         }
 
-        // Set up the item rarity label.
-        try
+        if (Options.Instance.Items.TryGetRarityName(_itemDescriptor.Rarity, out var rarityName))
         {
-            if (Options.Instance.Items.TryGetRarityName(_itemDescriptor.Rarity, out var rarityName))
-            {
-                _ = Strings.ItemDescription.Rarity.TryGetValue(rarityName, out var rarityLabel);
-                header.SetDescription(rarityLabel, rarityColor ?? Color.White);
-            }
-        }
-        catch (Exception exception)
-        {
-            ApplicationContext.Context.Value?.Logger.LogError(
-                exception,
-                "Error setting rarity description for rarity {Rarity}",
-                _itemDescriptor.Rarity
-            );
-            throw;
+            Strings.ItemDescription.Rarity.TryGetValue(rarityName, out var rarityLabel);
+            header.SetDescription(rarityLabel?.ToString() ?? rarityName, rarityColor ?? Color.White);
         }
 
         header.SizeToChildren(true, false);
@@ -296,13 +281,18 @@ public partial class ItemDescriptionWindow() : DescriptionWindowBase(Interface.G
             rows.AddKeyValueRow(Strings.ItemDescription.BaseDamage, _itemDescriptor.Damage.ToString());
 
             // Damage Type:
-            Strings.ItemDescription.DamageTypes.TryGetValue(_itemDescriptor.DamageType, out var damageType);
-            rows.AddKeyValueRow(Strings.ItemDescription.BaseDamageType, damageType);
+            if (Strings.ItemDescription.DamageTypes.TryGetValue(_itemDescriptor.DamageType, out var damageType) &&
+                damageType is not null)
+            {
+                rows.AddKeyValueRow(Strings.ItemDescription.BaseDamageType, damageType);
+            }
 
             if (_itemDescriptor.Scaling > 0)
             {
-                Strings.ItemDescription.Stats.TryGetValue(_itemDescriptor.ScalingStat, out var stat);
-                rows.AddKeyValueRow(Strings.ItemDescription.ScalingStat, stat);
+                if (Strings.ItemDescription.Stats.TryGetValue(_itemDescriptor.ScalingStat, out var stat) && stat is not null)
+                {
+                    rows.AddKeyValueRow(Strings.ItemDescription.ScalingStat, stat);
+                }
                 rows.AddKeyValueRow(Strings.ItemDescription.ScalingPercentage, Strings.ItemDescription.Percentage.ToString(_itemDescriptor.Scaling));
             }
 

@@ -13,7 +13,13 @@ public static partial class Strings
         public static LocalizedString Result = "Practice result: {00}";
         public static LocalizedString Actor = "{00} \u2014 Level {01}";
         public static LocalizedString Fight = "Fight";
-        public static LocalizedString Bag = "Bag (unavailable)";
+        public static LocalizedString Items = "Items";
+        public static LocalizedString ItemsProhibited = "Items (capture prohibited)";
+        public static LocalizedString ItemsEmpty = "Items (no capture devices)";
+        public static LocalizedString CaptureProhibited = "Capturing is unavailable in this battle.";
+        public static LocalizedString CaptureItemsHelp = "Use a capture device from your inventory.";
+        public static LocalizedString CaptureNoDevices = "You have no usable capture devices.";
+        public static LocalizedString CaptureDeviceCount = "{00} ×{01}";
         public static LocalizedString PartyMenu = "Monsters";
         public static LocalizedString PartyActive = "Active";
         public static LocalizedString PartyFainted = "Fainted";

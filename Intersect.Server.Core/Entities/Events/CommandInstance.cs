@@ -85,6 +85,7 @@ public partial class CommandInstance
             MonsterBattleOutcome.Victory => pending.Command.Victory,
             MonsterBattleOutcome.Defeat => pending.Command.Defeat,
             MonsterBattleOutcome.Escaped => pending.Command.Escape,
+            MonsterBattleOutcome.Captured when pending.Command.AllowCapture => pending.Command.Capture,
             _ => Guid.Empty,
         };
         if (id != Guid.Empty && Page.CommandLists.TryGetValue(id, out var commands))

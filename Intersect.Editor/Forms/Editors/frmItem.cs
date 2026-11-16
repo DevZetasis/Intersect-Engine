@@ -1,5 +1,7 @@
 using System.Drawing.Imaging;
 using DarkUI.Forms;
+using DarkUI.Controls;
+using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Editor.Content;
 using Intersect.Editor.Core;
 using Intersect.Editor.General;
@@ -32,10 +34,20 @@ public partial class FrmItem : EditorForm
 
     private bool EffectValueUpdating = false;
 
+    private readonly DarkGroupBox _captureSettings = new() { Text = "Capture Device", Visible = false };
+    private readonly DarkNumericUpDown _captureMultiplier = new()
+    {
+        DecimalPlaces = 2, Increment = 0.05m, Minimum = MonsterCaptureChance.MinimumDeviceMultiplier,
+        Maximum = MonsterCaptureChance.MaximumDeviceMultiplier, Value = 1m,
+    };
+    private readonly DarkCheckBox _guaranteedCapture = new() { Text = "Guaranteed Capture", AutoSize = true };
+    private bool _loadingCaptureSettings;
+
     public FrmItem()
     {
         ApplyHooks();
         InitializeComponent();
+        InitializeCaptureSettings();
         Icon = Program.Icon;
 
         cmbEquipmentSlot.Items.Clear();
@@ -52,6 +64,26 @@ public partial class FrmItem : EditorForm
 
         lstGameObjects.Init(UpdateToolStripItems, AssignEditorItem, toolStripItemNew_Click, toolStripItemCopy_Click, toolStripItemUndo_Click, toolStripItemPaste_Click, toolStripItemDelete_Click);
     }
+    private void InitializeCaptureSettings()
+    {
+        _captureSettings.Location = grpBags.Location;
+        _captureSettings.Size = new Size(grpBags.Width, 84);
+        var label = new DarkLabel { Text = "Capture Multiplier (×)", AutoSize = true, Location = new System.Drawing.Point(8, 26) };
+        _captureMultiplier.SetBounds(155, 22, 84, 24);
+        _guaranteedCapture.Location = new System.Drawing.Point(8, 51);
+        _captureSettings.Controls.AddRange([label, _captureMultiplier, _guaranteedCapture]);
+        grpGeneral.Controls.Add(_captureSettings);
+        _captureSettings.BringToFront();
+        _captureMultiplier.ValueChanged += (_, _) =>
+        {
+            if (!_loadingCaptureSettings && mEditorItem != null) mEditorItem.CaptureMultiplier = decimal.Round(_captureMultiplier.Value, 2);
+        };
+        _guaranteedCapture.CheckedChanged += (_, _) =>
+        {
+            if (!_loadingCaptureSettings && mEditorItem != null) mEditorItem.GuaranteedCapture = _guaranteedCapture.Checked;
+        };
+    }
+
     private void AssignEditorItem(Guid id)
     {
         mEditorItem = ItemDescriptor.Get(id);
@@ -478,6 +510,7 @@ public partial class FrmItem : EditorForm
         grpEquipment.Visible = false;
         grpEvent.Visible = false;
         grpBags.Visible = false;
+        _captureSettings.Visible = false;
         chkStackable.Enabled = true;
 
         if ((int)mEditorItem.ItemType != cmbType.SelectedIndex)
@@ -544,6 +577,18 @@ public partial class FrmItem : EditorForm
             // Whether this item type is stackable is not up for debate.
             chkStackable.Checked = false;
             chkStackable.Enabled = false;
+        }
+        else if (cmbType.SelectedIndex == (int)ItemType.MonsterCaptureDevice)
+        {
+            _loadingCaptureSettings = true;
+            try
+            {
+                _captureMultiplier.Value = Math.Clamp(mEditorItem.CaptureMultiplier,
+                    MonsterCaptureChance.MinimumDeviceMultiplier, MonsterCaptureChance.MaximumDeviceMultiplier);
+                _guaranteedCapture.Checked = mEditorItem.GuaranteedCapture;
+            }
+            finally { _loadingCaptureSettings = false; }
+            _captureSettings.Visible = true;
         }
         else if (cmbType.SelectedIndex == (int)ItemType.Currency)
         {

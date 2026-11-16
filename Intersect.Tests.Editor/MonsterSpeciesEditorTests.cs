@@ -36,6 +36,12 @@ public class MonsterSpeciesEditorTests
             Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BackBattleSprite, Is.EqualTo("test-art.png"));
             Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BattleBackground, Is.EqualTo("test-art.png"));
             Field<TextBox>(editor, "_description").Text = "Unsaved Description";
+            var captureChance = Field<NumericUpDown>(editor, "_captureChance");
+            Assert.That(captureChance.Value, Is.EqualTo(40));
+            Assert.That(captureChance.Minimum, Is.Zero);
+            Assert.That(captureChance.Maximum, Is.EqualTo(100));
+            captureChance.Value = 0;
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BaseCaptureChance, Is.Zero);
             Field<NumericUpDown>(editor, "_hp").Value = 123;
             Field<NumericUpDown>(editor, "_specialAttack").Value = 456;
             Field<NumericUpDown>(editor, "_specialDefense").Value = 789;
@@ -107,6 +113,7 @@ public class MonsterSpeciesEditorTests
                 Assert.That(input.Maximum, Is.EqualTo(int.MaxValue));
                 input.Value = values[index];
             }
+            Field<NumericUpDown>(editor, "_captureChance").Value = 73;
             var selected = Field<MonsterSpeciesDescriptor>(editor, "_selected");
             selected.FrontBattleSprite = "front.png"; selected.BackBattleSprite = "back.png"; selected.BattleBackground = "scene.png";
             var weights = Field<FlowLayoutPanel>(editor, "_genderWeights");
@@ -125,6 +132,7 @@ public class MonsterSpeciesEditorTests
             var pasted = Field<MonsterSpeciesDescriptor>(editor, "_selected");
             Assert.That(pasted.Id, Is.EqualTo(target.Id));
             Assert.That(pasted.BaseStatsJson, Is.EqualTo(draftJson));
+            Assert.That(pasted.BaseCaptureChance, Is.EqualTo(73));
             Assert.That(pasted.GenderWeights[MonsterGenderDescriptor.DefaultMale], Is.EqualTo(75));
             Assert.That(pasted.FrontBattleSprite, Is.EqualTo("front.png")); Assert.That(pasted.BackBattleSprite, Is.EqualTo("back.png")); Assert.That(pasted.BattleBackground, Is.EqualTo("scene.png"));
             var table = Field<TableLayoutPanel>(editor, "_fields");
@@ -134,8 +142,8 @@ public class MonsterSpeciesEditorTests
             {
                 var input = Field<NumericUpDown>(editor, fields[index]);
                 Assert.That(input.Value, Is.EqualTo(values[index]));
-                Assert.That(table.GetRow(input), Is.EqualTo(9 + index));
-                var label = table.GetControlFromPosition(0, 9 + index)!;
+                Assert.That(table.GetRow(input), Is.EqualTo(10 + index));
+                var label = table.GetControlFromPosition(0, 10 + index)!;
                 Assert.That(label.PreferredSize.Width, Is.LessThanOrEqualTo((int)table.ColumnStyles[0].Width));
             }
             typeof(FrmMonsterSpecies).GetMethod("UndoSpecies", BindingFlags.Instance | BindingFlags.NonPublic)!

@@ -54,8 +54,6 @@ public class MonsterOwnershipTests
         db.GetService<IMigrator>().Migrate(previous);
         var first = new Player { Name = "Trainer One" };
         var second = new Player { Name = "Trainer Two" };
-        first.Items[0].ItemId = _item;
-        first.Items[0].Quantity = 7;
         var account = new User
         {
             Name = "ownership-test", Email = "test@example.invalid", Power = UserRights.None,
@@ -65,6 +63,10 @@ public class MonsterOwnershipTests
         db.SaveChanges();
         _first = first.Id;
         _second = second.Id;
+        db.Database.ExecuteSqlInterpolated($"""
+            INSERT INTO Player_Items (Id, PlayerId, Slot, ItemId, Quantity, ItemProperties)
+            VALUES ({Guid.NewGuid()}, {_first}, {0}, {_item}, {7}, {"{}"})
+            """);
         db.Database.Migrate();
     }
 
@@ -300,7 +302,7 @@ public class MonsterOwnershipTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsters();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterGender().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddInventoryCaptureReceipt().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
@@ -333,6 +335,6 @@ public class MonsterOwnershipTests
         var move = new MoveOwnedMonsterPacket { MonsterId = monster.Id, ExpectedRevision = monster.Revision, Destination = MonsterLocation.Storage };
         Assert.That(MessagePacker.Instance.Deserialize<MoveOwnedMonsterPacket>(MessagePacker.Instance.Serialize(move))!.ExpectedRevision, Is.EqualTo(monster.Revision));
         Assert.That(MessagePacker.Instance.Deserialize<RequestOwnedMonstersPacket>(MessagePacker.Instance.Serialize(new RequestOwnedMonstersPacket())), Is.Not.Null);
-        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v11"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v12"));
     }
 }

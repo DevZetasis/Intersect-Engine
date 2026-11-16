@@ -2,7 +2,7 @@ using MessagePack;
 
 namespace Intersect.Network.Packets.Server;
 
-public enum MonsterBattleOutcome { Active = 0, Victory = 1, Defeat = 2, Forfeit = 3, Cancelled = 4, Draw = 5, Escaped = 6 }
+public enum MonsterBattleOutcome { Active = 0, Victory = 1, Defeat = 2, Forfeit = 3, Cancelled = 4, Draw = 5, Escaped = 6, Captured = 7 }
 
 public enum MonsterBattlePhase { Commands, Resolving, Replacement, Completed, Ended }
 
@@ -44,6 +44,14 @@ public sealed class MonsterBattleMoveView
     [Key(7)] public string UnavailableReason { get; set; } = string.Empty;
 }
 
+[MessagePackObject]
+public sealed class MonsterBattleCaptureDevice
+{
+    [Key(0)] public Guid Id { get; set; }
+    [Key(1)] public string Name { get; set; } = string.Empty;
+    [Key(2)] public int Quantity { get; set; }
+}
+
 /// <summary>One private authoritative snapshot serves start, turn result and end.</summary>
 [MessagePackObject]
 public sealed class MonsterBattleStatePacket : IntersectPacket
@@ -67,5 +75,7 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(16)] public bool IsWild { get; set; }
     [Key(17)] public bool CanRun { get; set; }
     [Key(18)] public bool AwaitingPresentationClose { get; set; }
+    [Key(19)] public bool AllowsCapture { get; set; }
+    [Key(20)] public MonsterBattleCaptureDevice[] CaptureDevices { get; set; } = [];
 
 }

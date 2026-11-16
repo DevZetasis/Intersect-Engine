@@ -23,9 +23,10 @@ public static partial class CommandPrinter
             });
         }
 
-        AddRow($"{Strings.EventCommandList.linestart}Start Monster Battle — {species}, level {command.Level}", true);
-        foreach (var (name, id) in new[] { ("Victory", command.Victory), ("Defeat", command.Defeat), ("Escape", command.Escape) })
+        AddRow($"{Strings.EventCommandList.linestart}Start Monster Battle — {species}, level {command.Level}{(command.AllowCapture ? ", capture allowed" : "")}", true);
+        foreach (var (name, id) in new[] { ("Victory", command.Victory), ("Defeat", command.Defeat), ("Escape", command.Escape), ("Capture", command.Capture) })
         {
+            if (name == "Capture" && id == Guid.Empty) continue;
             AddRow("      On " + name, false);
             if (page.CommandLists.TryGetValue(id, out var branch))
                 PrintCommandList(page, branch, indent + "          ", list, properties, map);

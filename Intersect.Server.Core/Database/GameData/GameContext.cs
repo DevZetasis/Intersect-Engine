@@ -101,6 +101,13 @@ public abstract partial class GameContext : IntersectDbContext<GameContext>, IGa
         modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BattleBackground).HasMaxLength(255).IsRequired().HasDefaultValue("");
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.MaximumPP).HasDefaultValue(20);
         modelBuilder.Entity<MonsterStatusDescriptor>().Property(status => status.DamageAmount).HasPrecision(14, 4);
+        modelBuilder.Entity<MonsterStatusDescriptor>().Property(status => status.CaptureMultiplier)
+            .HasPrecision(3, 2).HasDefaultValue(1m).HasSentinel(1m);
+        modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.BaseCaptureChance)
+            .HasDefaultValue(40).HasSentinel(40);
+        modelBuilder.Entity<ItemDescriptor>().Property(item => item.CaptureMultiplier)
+            .HasPrecision(4, 2).HasDefaultValue(1m).HasSentinel(1m);
+        modelBuilder.Entity<ItemDescriptor>().Property(item => item.GuaranteedCapture).HasDefaultValue(false);
         modelBuilder.Entity<MonsterSpeciesDescriptor>().Property(species => species.GenderWeightsJson).IsRequired(false);
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.EffectsJson).IsRequired(false);
         modelBuilder.Entity<MonsterMoveDescriptor>().Property(move => move.AnimationPosition)

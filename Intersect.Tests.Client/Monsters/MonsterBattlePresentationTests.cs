@@ -5,6 +5,9 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Intersect.Client.Framework.Graphics;
 using Intersect.Client.Interface.Game.Monsters;
+using Intersect.Client.MonoGame.Graphics;
+using AtlasColor = Microsoft.Xna.Framework.Color;
+using AtlasRectangle = Microsoft.Xna.Framework.Rectangle;
 using Intersect.Network.Packets.Server;
 using NUnit.Framework;
 
@@ -26,6 +29,38 @@ public class MonsterBattlePresentationTests
     {
         var model = new MonsterBattlePlayback(); var start = State(1, Guid.NewGuid()); model.Accept(start); return (model, start);
     }
+    [Test]
+    public void CaptureResultAndPlacementArePresentedAfterTheAttempt()
+    {
+        var (model, start) = Ready();
+        start.AllowsCapture = true;
+        start.CaptureDevices = [new() { Id = Guid.NewGuid(), Name = "Basic Device", Quantity = 2 }];
+        var decoded = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(
+            MessagePack.MessagePackSerializer.Serialize(start));
+        Assert.That(decoded.AllowsCapture, Is.True);
+        Assert.That(decoded.CaptureDevices.Single().Id, Is.EqualTo(start.CaptureDevices.Single().Id));
+        Assert.That(decoded.CaptureDevices.Single().Quantity, Is.EqualTo(2));
+
+        Assert.That(model.BeginAwaiting(), Is.True);
+        var used = Event(MonsterBattleEventKind.CaptureDeviceUsed, 0, true) with { Text = "You used Basic Device." };
+        var result = Event(MonsterBattleEventKind.BattleFinished, 1, true) with { Text = "Captured in storage slot 1." };
+        var end = State(2, Guid.NewGuid(), start.Revision, [used, result], outcome: MonsterBattleOutcome.Captured);
+        end.Messages = [used.Text, result.Text];
+        end.AwaitingPresentationClose = true;
+        model.Accept(end);
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.PlayingSequence));
+        Assert.That(model.BeginAwaiting(), Is.False);
+        Assert.That(model.Text, Is.EqualTo(used.Text));
+        model.Tick(.2);
+        Assert.That(model.Text, Is.EqualTo(used.Text));
+        model.Advance();
+        Assert.That(model.Text, Is.EqualTo(result.Text));
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.PlayingSequence));
+        model.Advance();
+        Assert.That(model.Phase, Is.EqualTo(MonsterBattlePresentationPhase.ShowingResult));
+        Assert.That(model.Text, Is.EqualTo(result.Text));
+    }
+
     [Test]
     public void OrderedFactsDriveOpponentFirstAndSequentialHpEndpoints()
     {
@@ -359,19 +394,100 @@ public class MonsterBattlePresentationTests
     }
 
     [Test]
+    public void RosterTooltipRepairsOnlyTheOldDefaultTemplate()
+    {
+        var original = Intersect.Client.Localization.Strings.Monsters.Entry;
+        try
+        {
+            const string name = "Nivéole — 雪";
+            const string species = "Pebbling";
+            var expected = $"Party #1: {name} — {species} — Lv. 3";
+            Assert.That(Intersect.Client.Localization.Strings.Monsters.FormatEntry("Party", 1, name, species, 3), Is.EqualTo(expected));
+
+            Intersect.Client.Localization.Strings.Monsters.Entry = "{00} #{01}: {02} â€” {03} â€” Lv. {04}";
+            Assert.That(Intersect.Client.Localization.Strings.Monsters.FormatEntry("Party", 1, name, species, 3), Is.EqualTo(expected));
+
+            Intersect.Client.Localization.Strings.Monsters.Entry = "{02} «{03}» — niv. {04}";
+            Assert.That(Intersect.Client.Localization.Strings.Monsters.FormatEntry("Party", 1, name, species, 3),
+                Is.EqualTo($"{name} «{species}» — niv. 3"));
+        }
+        finally { Intersect.Client.Localization.Strings.Monsters.Entry = original; }
+    }
+
+    [Test]
+    public void GenderGlyphsReplaceOnlyDedicatedMissingTilesAndPreserveNativeSymbols()
+    {
+        var missing = new AtlasRectangle(0, 0, 11, 12);
+        var male = new AtlasRectangle(11, 0, 11, 12);
+        var female = new AtlasRectangle(22, 0, 11, 12);
+        var customMissing = new AtlasRectangle(33, 0, 11, 12);
+        var customNative = new AtlasRectangle(44, 0, 11, 12);
+        var placeholder = Enumerable.Repeat(AtlasColor.White, 11 * 12).ToArray();
+        var nativePixels = placeholder.ToArray();
+        nativePixels[0] = AtlasColor.Transparent;
+        var tiles = new Dictionary<AtlasRectangle, AtlasColor[]>
+        {
+            [missing] = placeholder,
+            [male] = placeholder.ToArray(),
+            [female] = placeholder.ToArray(),
+            [customMissing] = placeholder.ToArray(),
+            [customNative] = nativePixels,
+        };
+        var glyphs = new Dictionary<char, AtlasRectangle>
+        {
+            ['\u2065'] = missing, ['\u2642'] = male, ['\u2640'] = female,
+            ['\u2604'] = customMissing, ['\u2665'] = customNative,
+        };
+        var writes = new List<AtlasRectangle>();
+        var coverage = new MonsterSymbolGlyphs(glyphs, region => tiles[region], (region, pixels) =>
+        {
+            writes.Add(region);
+            tiles[region] = pixels;
+        });
+        Assert.That(coverage.Supports('\u2642'), Is.True);
+        Assert.That(coverage.Supports('\u2640'), Is.True);
+        Assert.That(coverage.Supports('\u2640'), Is.True);
+        Assert.That(coverage.Supports('\u2665'), Is.True);
+        Assert.That(coverage.Supports('\u2604'), Is.False);
+        Assert.That(coverage.Supports('\u96EA'), Is.False);
+        Assert.That(writes, Is.EqualTo(new[] { male, female }));
+        foreach (var tile in new[] { tiles[male], tiles[female] })
+        {
+            Assert.That(tile.Any(pixel => pixel.A == 0), Is.True);
+            Assert.That(tile.Any(pixel => pixel.A == 255), Is.True);
+        }
+        Assert.That(tiles[male], Is.Not.EqualTo(tiles[female]));
+        Assert.That(tiles[missing], Is.EqualTo(placeholder));
+        Assert.That(tiles[customNative], Is.EqualTo(nativePixels));
+
+        var shared = new Dictionary<char, AtlasRectangle>(glyphs) { ['\u2642'] = missing };
+        var sharedCoverage = new MonsterSymbolGlyphs(shared, region => tiles[region], (_, _) => Assert.Fail("Shared tile was modified."));
+        Assert.That(sharedCoverage.Supports('\u2642'), Is.False);
+    }
+
+    [Test]
     public void GenderNameSurvivesMissingGlyphAndUnspecifiedIsDistinct()
     {
         var id = Guid.NewGuid();
-        Assert.That(MonsterGenderText.Format(id, "Astral", "â˜„", null, 14), Is.EqualTo("Astral"));
+        Assert.That(MonsterGenderText.Format(id, "Astral", "\u2604", null, 14), Is.EqualTo("Astral"));
         Assert.That(MonsterGenderText.Format(null, null, null, null, 14), Is.EqualTo("Unspecified"));
         Assert.That(MonsterGenderText.Format(id, "Genderless", "", null, 14), Is.EqualTo("Genderless"));
         Assert.That(MonsterGenderText.Format(id, null, null, null, 14), Is.EqualTo("Unavailable"));
         var state = State(1, Guid.NewGuid());
         state.Player.GenderId = id;
         state.Player.GenderName = "Astral";
+        state.Player.Name = "Niv\u00E9ole \u2014 \u96EA";
+        state.Player.GenderSymbol = "\u2604";
+        state.Opponent.GenderId = MonsterGenderDescriptor.DefaultFemale;
+        state.Opponent.GenderSymbol = "\u2640";
+        state.Party = [new() { Actor = new() { GenderId = MonsterGenderDescriptor.DefaultMale, GenderSymbol = "\u2642" } }];
         var roundTrip = MessagePack.MessagePackSerializer.Deserialize<MonsterBattleStatePacket>(MessagePack.MessagePackSerializer.Serialize(state));
         Assert.That(roundTrip.Player.GenderId, Is.EqualTo(id));
         Assert.That(roundTrip.Player.GenderName, Is.EqualTo("Astral"));
+        Assert.That(roundTrip.Player.Name, Is.EqualTo(state.Player.Name));
+        Assert.That(roundTrip.Player.GenderSymbol, Is.EqualTo(state.Player.GenderSymbol));
+        Assert.That(roundTrip.Opponent.GenderSymbol!.Single(), Is.EqualTo((char)0x2640));
+        Assert.That(roundTrip.Party[0].Actor.GenderSymbol!.Single(), Is.EqualTo((char)0x2642));
     }
     [Test]
     public void WildEscapeSnapshotKeepsOpponentAndReturnsToResultImmediately()

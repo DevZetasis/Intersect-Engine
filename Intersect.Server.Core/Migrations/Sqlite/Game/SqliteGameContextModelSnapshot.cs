@@ -168,6 +168,10 @@ namespace Intersect.Server.Migrations.Sqlite.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Items.ItemDescriptor", b =>
                 {
+                    b.Property<decimal>("CaptureMultiplier").ValueGeneratedOnAdd().HasColumnType("TEXT").HasPrecision(4, 2).HasSentinel(1m).HasDefaultValue(1m);
+
+                    b.Property<bool>("GuaranteedCapture").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasDefaultValue(false);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
@@ -525,6 +529,8 @@ namespace Intersect.Server.Migrations.Sqlite.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
+                    b.Property<int>("BaseCaptureChance").ValueGeneratedOnAdd().HasColumnType("INTEGER").HasSentinel(40).HasDefaultValue(40);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
@@ -603,6 +609,8 @@ namespace Intersect.Server.Migrations.Sqlite.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterStatusDescriptor", b =>
                 {
+                    b.Property<decimal>("CaptureMultiplier").ValueGeneratedOnAdd().HasColumnType("TEXT").HasPrecision(3, 2).HasSentinel(1m).HasDefaultValue(1m);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 

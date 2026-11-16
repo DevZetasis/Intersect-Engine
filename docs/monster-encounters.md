@@ -1,4 +1,4 @@
-# Milestone 6I-B â€” Random wild encounters
+# Milestone 6I-B — Random wild encounters
 
 ## Launch the disposable world
 
@@ -37,9 +37,9 @@ grantmonster "M6IBTrainer" 6b000000-0000-4000-8000-000000000205 6b190000-0000-40
 
 | Species | UUID | Test use |
 |---|---|---|
-| Mossling | `6f000000-0000-4000-8000-000000000001` | Party lead and painted route opponent, levels 2â€“4 |
-| Emberling | `6f000000-0000-4000-8000-000000000002` | Painted route opponent, levels 3â€“5. Whole-map opponent, levels 3â€“4 |
-| Pebbling | `6f000000-0000-4000-8000-000000000003` | Painted cave override, levels 4â€“6, always Genderless |
+| Mossling | `6f000000-0000-4000-8000-000000000001` | Party lead and painted route opponent, levels 2–4 |
+| Emberling | `6f000000-0000-4000-8000-000000000002` | Painted route opponent, levels 3–5. Whole-map opponent, levels 3–4 |
+| Pebbling | `6f000000-0000-4000-8000-000000000003` | Painted cave override, levels 4–6, always Genderless |
 | Astral Mossling | `6b000000-0000-4000-8000-000000000205` | Second party member with Apply Poison, Clear Condition and Sparring Strike |
 
 ### Walk the two maps
@@ -48,13 +48,13 @@ Coordinates are zero-based. The party healer is east of the spawn at (3,2).
 
 | Map and area | Location | Expected result |
 |---|---|---|
-| Route 1 â€” Painted Grass | Spawn (2,2), path (2,3) and (3,3) | Safe. Stay still or face another way to verify there is no roll |
+| Route 1 — Painted Grass | Spawn (2,2), path (2,3) and (3,3) | Safe. Stay still or face another way to verify there is no roll |
 | Route 1 block | (2,4) | A standard Block under an encounter overlay. Walking south from (2,3) cannot enter it |
-| Route 1 grass | Green rectangle x=2â€“8, y=4â€“8 | Enter at (3,4). Painted Grass table picks Mossling 60% or Emberling 40% |
+| Route 1 grass | Green rectangle x=2–8, y=4–8 | Enter at (3,4). Painted Grass table picks Mossling 60% or Emberling 40% |
 | Route 1 warp | (9,3) | From the safe path move east along y=3. The warp shares a painted assignment and takes you to Cave Path (2,2) |
-| Cave Path â€” Whole Map | Tan area x=0â€“4, y=0â€“4 | Explicit No Encounter. The warp arrival is here |
+| Cave Path — Whole Map | Tan area x=0–4, y=0–4 | Explicit No Encounter. The warp arrival is here |
 | Cave default | Outside the safe area and pocket, for example (5,2) | Default table produces Emberling |
-| Cave pocket | x=8â€“12, y=2â€“7 | Painted table takes precedence and produces Pebbling |
+| Cave pocket | x=8–12, y=2–7 | Painted table takes precedence and produces Pebbling |
 | Cave return warp | (0,1) | Returns to Route 1 (9,2) |
 
 Each table is initially at 100% rate with a two-step cooldown. Open the first wild battle and run `inspectwild M6IBTrainer` while it is active. The console reports the encounter table, individual UUID, species, level, IVs, Nature, gender and moves. Repeat after a turn to verify that the individual and its generated attributes stay the same. Use the battle panel to check level, gender and HP. Compare two distinct encounters using their UUIDs and IVs.

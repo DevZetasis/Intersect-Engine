@@ -3,7 +3,7 @@ using MessagePack;
 
 namespace Intersect.Network.Packets.Server;
 
-public enum MonsterBattleEventKind { MoveUsed = 0, MoveMissed = 1, DamageApplied = 2, CriticalHit = 3, TypeEffectiveness = 4, MonsterFainted = 5, BattleFinished = 6, Withdraw = 7, SendOut = 8, StatStageChanged = 9, HPRecovered = 10, EffectFailed = 11, StatusApplied = 12, StatusRemoved = 13, StatusBlocked = 14, StatusDamage = 15 }
+public enum MonsterBattleEventKind { MoveUsed = 0, MoveMissed = 1, DamageApplied = 2, CriticalHit = 3, TypeEffectiveness = 4, MonsterFainted = 5, BattleFinished = 6, Withdraw = 7, SendOut = 8, StatStageChanged = 9, HPRecovered = 10, EffectFailed = 11, StatusApplied = 12, StatusRemoved = 13, StatusBlocked = 14, StatusDamage = 15, CaptureDeviceUsed = 16, CaptureFailed = 17 }
 
 /// <summary>Ordered resolved facts for one packet revision, never client-supplied combat input.</summary>
 [MessagePackObject]

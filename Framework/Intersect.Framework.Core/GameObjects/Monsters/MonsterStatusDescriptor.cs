@@ -26,6 +26,7 @@ public sealed class MonsterStatusDescriptor : DatabaseObject<MonsterStatusDescri
     public int PreventActionChance { get; set; }
     public MonsterStatusDamage Damage { get; set; }
     public decimal DamageAmount { get; set; }
+    public decimal CaptureMultiplier { get; set; } = 1m;
     public int AttackPercent { get; set; } = 100;
     public int DefensePercent { get; set; } = 100;
     public int SpecialAttackPercent { get; set; } = 100;
@@ -41,7 +42,7 @@ public sealed class MonsterStatusDescriptor : DatabaseObject<MonsterStatusDescri
         PreventActionMessage != null && Enum.IsDefined(Group) && Enum.IsDefined(Duration) &&
         MinimumTurns is >= 1 and <= 999 && MaximumTurns is >= 1 and <= 999 &&
         (Duration != MonsterStatusDuration.Random || MaximumTurns >= MinimumTurns) &&
-        RecoveryChance is >= 0 and <= 100 && PreventActionChance is >= 0 and <= 100 &&
+        MonsterCaptureChance.IsStatusMultiplier(CaptureMultiplier) && RecoveryChance is >= 0 and <= 100 && PreventActionChance is >= 0 and <= 100 &&
         new[] { AttackPercent, DefensePercent, SpecialAttackPercent, SpecialDefensePercent, SpeedPercent }.All(value => value is >= 1 and <= 100) &&
         AppliedAnimationId != Guid.Empty && ActivationAnimationId != Guid.Empty && RemovedAnimationId != Guid.Empty &&
         Damage switch

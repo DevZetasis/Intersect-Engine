@@ -145,6 +145,7 @@ public abstract partial class PlayerContext : IntersectDbContext<PlayerContext>,
             .HasForeignKey(p => p.ParentBagId);
 
         modelBuilder.Entity<InventorySlot>().HasOne(b => b.Bag);
+        modelBuilder.Entity<InventorySlot>().Property(slot => slot.LastCaptureAttempt).IsConcurrencyToken();
         modelBuilder.Entity<BagSlot>().HasOne(b => b.Bag);
         modelBuilder.Entity<BankSlot>().HasOne(b => b.Bag);
 

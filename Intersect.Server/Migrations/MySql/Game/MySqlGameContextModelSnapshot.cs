@@ -181,6 +181,10 @@ namespace Intersect.Server.Migrations.MySql.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Items.ItemDescriptor", b =>
                 {
+                    b.Property<decimal>("CaptureMultiplier").ValueGeneratedOnAdd().HasColumnType("decimal(4,2)").HasPrecision(4, 2).HasSentinel(1m).HasDefaultValue(1m);
+
+                    b.Property<bool>("GuaranteedCapture").ValueGeneratedOnAdd().HasColumnType("tinyint(1)").HasDefaultValue(false);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");
@@ -552,6 +556,8 @@ namespace Intersect.Server.Migrations.MySql.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterSpeciesDescriptor", b =>
                 {
+                    b.Property<int>("BaseCaptureChance").ValueGeneratedOnAdd().HasColumnType("int").HasSentinel(40).HasDefaultValue(40);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");
@@ -632,6 +638,8 @@ namespace Intersect.Server.Migrations.MySql.Game
 
             modelBuilder.Entity("Intersect.Framework.Core.GameObjects.Monsters.MonsterStatusDescriptor", b =>
                 {
+                    b.Property<decimal>("CaptureMultiplier").ValueGeneratedOnAdd().HasColumnType("decimal(3,2)").HasPrecision(3, 2).HasSentinel(1m).HasDefaultValue(1m);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
                         .UseCollation("ascii_general_ci");

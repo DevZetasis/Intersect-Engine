@@ -4,6 +4,8 @@ using System.Threading;
 using System.Windows.Forms;
 using Intersect.Editor.Forms.Controls;
 using Intersect.Editor.Forms.Editors;
+using Intersect.Editor.Forms.DockingElements;
+using Intersect.Framework.Core.GameObjects.Maps;
 using Intersect.Framework.Core.GameObjects.Animations;
 using Intersect.Framework.Core.GameObjects.Monsters;
 using Intersect.Network.Packets.Server;
@@ -15,6 +17,15 @@ namespace Intersect.Tests.Editor;
 [TestFixture, NonParallelizable, Apartment(ApartmentState.STA)]
 public class MonsterMoveEditorTests
 {
+    [Test]
+    public void MapEncounterEditorShowsUnicodeTitleAndMapName()
+    {
+        if (Options.Instance == null) Options.LoadFromServer("{}");
+        var map = new MapDescriptor(Guid.NewGuid()) { Name = "Route 1 — Forêt 雪" };
+        using var editor = new MapEncounterEditor(map, art: null);
+        Assert.That(editor.Text, Is.EqualTo($"Map Encounters — {map.Name}"));
+    }
+
     private static T Field<T>(object owner, string name) => (T)owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
     private static void Invoke(object owner, string name, params object?[] args) => owner.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, args);
     // PerformClick requires a visible form; invoke the real click event for hidden-control tests.
@@ -221,6 +232,22 @@ public class MonsterMoveEditorTests
             using var editor = new FrmMonsterStatus();
             editor.InitEditor();
             Invoke(editor, "SelectStatus", a.Id);
+            var fields = Field<TableLayoutPanel>(editor, "_fields");
+            Control Input(string caption)
+            {
+                var label = fields.Controls.OfType<Label>().Single(control => control.Text == caption);
+                return fields.GetControlFromPosition(1, fields.GetRow(label))!;
+            }
+            var multiplier = (NumericUpDown)Input("Capture Chance Multiplier");
+            var previewDevice = (NumericUpDown)Input("Preview · Device Multiplier");
+            var preview = Input("Preview · Result");
+            Assert.That(multiplier.Value, Is.EqualTo(1m));
+            multiplier.Value = 2m;
+            Assert.That(preview.Text, Does.Contain("45%").And.Contain("90%"));
+            previewDevice.Value = 1.5m;
+            Assert.That(preview.Text, Does.Contain("95%"));
+            Assert.That(Field<MonsterStatusDescriptor>(editor, "_selected").CaptureMultiplier, Is.EqualTo(2m));
+            Assert.That(a.CaptureMultiplier, Is.EqualTo(1m));
             Field<TextBox>(editor, "_name").Text = "Edited";
             Invoke(editor, "CopyStatus", null, EventArgs.Empty);
             Invoke(editor, "SelectStatus", b.Id);
@@ -229,6 +256,7 @@ public class MonsterMoveEditorTests
             Assert.That(draft.Id, Is.EqualTo(b.Id));
             Assert.That(draft.PersistOutsideBattle, Is.True);
             Assert.That(draft.DamageAmount, Is.EqualTo(12.5m));
+            Assert.That(draft.CaptureMultiplier, Is.EqualTo(2m));
             Assert.That(draft.Name, Is.EqualTo("Edited"));
             Invoke(editor, "UndoStatus", null, EventArgs.Empty);
             Assert.That(draft.JsonData, Is.EqualTo(b.JsonData));

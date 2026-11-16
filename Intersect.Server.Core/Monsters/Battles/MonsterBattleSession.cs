@@ -39,7 +39,10 @@ public sealed partial class MonsterBattleSession
     public MonsterBattleSession(MonsterBattleSide player, MonsterBattleSide opponent, MonsterBattleRules rules,
         IMonsterRandom random, IMonsterBattleDecisionProvider? provider = null, string background = "",
         Action<MonsterBattleCombatant>? persist = null, Action<IReadOnlyList<MonsterBattleCombatant>>? persistParty = null, Func<Guid, MonsterStatusDescriptor?>? findStatus = null,
-        GeneratedWildMonster? wild = null, Guid? encounterTableId = null)
+        GeneratedWildMonster? wild = null, Guid? encounterTableId = null, int baseCaptureChance = 40,
+        Func<MonsterBattleCaptureDevice[]>? captureDevices = null,
+        Func<Guid, CaptureDevice?>? captureDevice = null,
+        Func<CaptureTurn, IReadOnlyList<MonsterBattleCombatant>, string?>? persistCapture = null)
     {
         rules.Validate();
         var members = player.Party.Concat(opponent.Party).ToArray();
@@ -53,6 +56,10 @@ public sealed partial class MonsterBattleSession
 
         Wild = wild;
         EncounterTableId = encounterTableId;
+        _baseCaptureChance = baseCaptureChance;
+        _captureDevices = captureDevices;
+        _captureDevice = captureDevice;
+        _persistCapture = persistCapture;
         if (Wild != null) _messages = [$"A wild {opponent.Active.Name} appeared!"];
         _background = background;
         _persist = persistParty ?? (persist == null ? null : changed => persist(changed.Single()));
@@ -66,7 +73,17 @@ public sealed partial class MonsterBattleSession
 
     internal void PersistResolvedTurn()
     {
-        if (_changed.Length > 0) _persist?.Invoke(_changed);
+        if (_captureTurn is { } capture)
+        {
+            var destination = _persistCapture!(capture, _changed);
+            if (capture.Target != null)
+            {
+                var result = $"{Opponent.Name} was captured and placed in {destination}.";
+                _messages = [.._messages, result];
+                _events = [.._events, new() { Kind = MonsterBattleEventKind.BattleFinished, Order = _events.Length, Text = result }];
+            }
+        }
+        else if (_changed.Length > 0) _persist?.Invoke(_changed);
     }
 
     private static int[] PP(MonsterBattleCombatant actor) => actor.Moves.Select(move => move?.PP ?? 0).ToArray();
@@ -103,6 +120,7 @@ public sealed partial class MonsterBattleSession
                     _messages = messages;
                     _events = events;
                     _changed = [];
+                    _captureTurn = null;
                 }
             };
         }
@@ -117,6 +135,7 @@ public sealed partial class MonsterBattleSession
         {
             var kind = ValidateAction(owner, action);
             _changed = [];
+            _captureTurn = null;
             if (kind == MonsterBattleActionKind.Run)
             {
                 Finish(MonsterBattleOutcome.Escaped, "You escaped from the wild battle.");
@@ -132,6 +151,7 @@ public sealed partial class MonsterBattleSession
             var messages = new List<string>();
             var events = new List<MonsterBattlePresentationEvent>();
             _previousRevision = Revision;
+            var capture = kind == MonsterBattleActionKind.Capture ? ValidateCapture(action.ItemId) : default;
             Phase = MonsterBattlePhase.Resolving;
             try
             {
@@ -139,6 +159,10 @@ public sealed partial class MonsterBattleSession
                 {
                     Switch(action.MonsterId, false, messages, events);
                     Phase = MonsterBattlePhase.Commands;
+                }
+                else if (kind == MonsterBattleActionKind.Capture)
+                {
+                    AttemptCapture(action, capture.Device, capture.Chance, messages, events);
                 }
                 else
                 {
@@ -380,6 +404,9 @@ public sealed partial class MonsterBattleSession
                 case MonsterBattleActionKind.Run when CanRun:
                 case MonsterBattleActionKind.Forfeit:
                     break;
+                case MonsterBattleActionKind.Capture:
+                    ValidateCapture(action.ItemId);
+                    break;
                 case MonsterBattleActionKind.Move when Phase == MonsterBattlePhase.Commands &&
                     action.MoveSlot is >= 0 and <= 3 && Player.Moves[action.MoveSlot]?.Usable == true:
                     break;
@@ -431,6 +458,8 @@ public sealed partial class MonsterBattleSession
             Moves = Enumerable.Range(0, 4).Select(slot => Player.Moves[slot]?.View(slot) ?? new MonsterBattleMoveView { Slot = slot, Name = "Empty slot", UnavailableReason = "Empty slot" }).ToArray(),
             Messages = rejection == null ? _messages.ToArray() : [rejection],
             PreviousRevision = _previousRevision, IsCorrection = rejection != null, Background = _background,
+            AllowsCapture = CanCapture,
+            CaptureDevices = CanCapture ? _captureDevices?.Invoke() ?? [] : [],
             Events = rejection == null ? _events.Select(item => item with { }).ToArray() : [],
         };
     }

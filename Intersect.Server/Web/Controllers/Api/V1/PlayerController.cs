@@ -436,26 +436,29 @@ namespace Intersect.Server.Web.Controllers.Api.V1
                 return NotFound($@"No player found for lookup key '{lookupKey}'");
             }
 
-            if (!player.TryGiveItem(itemInfo.ItemId, itemInfo.Quantity, ItemHandling.Normal, itemInfo.BankOverflow, -1, true))
+            lock (player.EntityLock)
             {
-                return InternalServerError($@"Failed to give player {itemInfo.Quantity} of '{descriptor.Name}'.");
+                if (!player.TryGiveItem(itemInfo.ItemId, itemInfo.Quantity, ItemHandling.Normal, itemInfo.BankOverflow, -1, true))
+                {
+                    return InternalServerError($@"Failed to give player {itemInfo.Quantity} of '{descriptor.Name}'.");
+                }
+
+                using (var context = DbInterface.CreatePlayerContext(false))
+                {
+                    _ = context.Update(player);
+                    _ = context.SaveChanges();
+                }
+
+                var quantityBank = player.CountItems(itemInfo.ItemId, false, true);
+                var quantityInventory = player.CountItems(itemInfo.ItemId, true, false);
+
+                return Ok(
+                    new ItemsGiveResponseBody(
+                        itemInfo.ItemId,
+                        new ItemsGiveQuantityData(quantityBank + quantityInventory, quantityBank, quantityInventory)
+                    )
+                );
             }
-
-            using (var context = DbInterface.CreatePlayerContext(false))
-            {
-                _ = context.Update(player);
-                _ = context.SaveChanges();
-            }
-
-            var quantityBank = player.CountItems(itemInfo.ItemId, false, true);
-            var quantityInventory = player.CountItems(itemInfo.ItemId, true, false);
-
-            return Ok(
-                new ItemsGiveResponseBody(
-                    itemInfo.ItemId,
-                    new ItemsGiveQuantityData(quantityBank + quantityInventory, quantityBank, quantityInventory)
-                )
-            );
         }
 
         [HttpPost("{lookupKey:LookupKey}/items/take")]
@@ -485,18 +488,21 @@ namespace Intersect.Server.Web.Controllers.Api.V1
                 return NotFound($"No item found with ID '{itemInfo.ItemId}'");
             }
 
-            if (!player.TryTakeItem(itemInfo.ItemId, itemInfo.Quantity))
+            lock (player.EntityLock)
             {
-                return InternalServerError($@"Failed to take {itemInfo.Quantity} of '{descriptor.Name}' from player.");
-            }
+                if (!player.TryTakeItem(itemInfo.ItemId, itemInfo.Quantity))
+                {
+                    return InternalServerError($@"Failed to take {itemInfo.Quantity} of '{descriptor.Name}' from player.");
+                }
 
-            using (var context = DbInterface.CreatePlayerContext(false))
-            {
-                _ = context.Update(player);
-                _ = context.SaveChanges();
-            }
+                using (var context = DbInterface.CreatePlayerContext(false))
+                {
+                    _ = context.Update(player);
+                    _ = context.SaveChanges();
+                }
 
-            return Ok(new ItemsTakeResponseBody(itemInfo.ItemId, itemInfo.Quantity));
+                return Ok(new ItemsTakeResponseBody(itemInfo.ItemId, itemInfo.Quantity));
+            }
         }
 
         #endregion

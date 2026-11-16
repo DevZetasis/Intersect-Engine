@@ -1315,6 +1315,23 @@ internal sealed partial class NetworkedPacketHandler
                     ServerContext.Instance.LogicService.LogicPool.WaitForIdle();
 
                     //if Item or Resource, kill all global entities of that kind
+                    if (obj is ItemDescriptor)
+                    {
+                        try
+                        {
+                            var candidate = new ItemDescriptor(id);
+                            candidate.Load(packet.Data);
+                            if (candidate.ItemType == ItemType.MonsterCaptureDevice &&
+                                !MonsterCaptureChance.IsDeviceMultiplier(candidate.CaptureMultiplier))
+                                throw new InvalidOperationException("Capture multiplier must be between 0.01 and 10.00 with at most two decimal places.");
+                        }
+                        catch (Exception exception) when (exception is Newtonsoft.Json.JsonException or InvalidOperationException)
+                        {
+                            PacketSender.SendError(client, exception.Message, "Item");
+                            return;
+                        }
+                    }
+
                     switch (obj)
                     {
                         case ItemDescriptor itemDescriptor:

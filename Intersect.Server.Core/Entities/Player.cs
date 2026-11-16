@@ -3444,6 +3444,9 @@ public partial class Player : Entity
                     }
 
                     return;
+                case ItemType.MonsterCaptureDevice:
+                    PacketSender.SendChatMsg(this, Strings.Items.CannotUse, ChatMessageType.Error);
+                    return;
                 case ItemType.Consumable:
                     var color = CustomColors.Items.ConsumeHp;
                     var die = false;

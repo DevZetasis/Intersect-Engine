@@ -24,6 +24,9 @@ public sealed class MonsterBattleWindow : Window
     private readonly Panel _partyMenu, _partyRows;
     private readonly ScrollControl _partyScroll;
     private readonly Button _partyBack;
+    private readonly Panel _itemsMenu, _itemRows;
+    private readonly ScrollControl _itemsScroll;
+    private readonly Button _itemsBack;
     private readonly MonsterBattleScene _scene;
     private readonly ImagePanel _background, _playerSprite, _opponentSprite;
     private readonly MonsterBattleAnimation _animation;
@@ -34,8 +37,9 @@ public sealed class MonsterBattleWindow : Window
     private readonly MonsterBattlePlayback _playback = new();
     private MonsterBattleStatePacket? _seen;
     private MonsterBattleSprite? _playerArt, _opponentArt;
-    private bool _inFight;
-    private bool _inParty;
+    private enum CommandMenu { Main, Fight, Party, Items }
+    private CommandMenu _commandMenu;
+    private MonsterBattleStatePacket? _itemSnapshot;
     private MonsterBattleStatePacket? _partySnapshot;
     private MonsterBattleActorView? _displayedArtActor;
     private long _lastTick = Stopwatch.GetTimestamp();
@@ -56,22 +60,31 @@ public sealed class MonsterBattleWindow : Window
         _advance.Clicked += (_, _) => { _playback.Advance(); RefreshControls(); };
         _skip.Clicked += (_, _) => { _playback.Skip(); RefreshControls(); };
         _commands = new Panel(this, "BattleCommands") { Dock = Pos.Bottom, Height = 178 };
-        _mainMenu = new Panel(_commands, "BattleMainMenu") { Dock = Pos.Fill };
-        _fightMenu = new Panel(_commands, "BattleFightMenu") { Dock = Pos.Fill };
-        _partyMenu = new Panel(_commands, "BattlePartyMenu") { Dock = Pos.Fill, IsHidden = true };
+        _mainMenu = new Panel(_commands, "BattleMainMenu");
+        _fightMenu = new Panel(_commands, "BattleFightMenu");
+        _partyMenu = new Panel(_commands, "BattlePartyMenu") { IsHidden = true };
         _partyBack = Button(_partyMenu, "BattlePartyBack", Strings.MonsterBattle.Back);
-        _partyBack.Clicked += (_, _) => { if (CanCommand) { _inParty = false; RefreshControls(); } };
+        _partyBack.Clicked += (_, _) => { if (CanCommand) { _commandMenu = CommandMenu.Main; RefreshControls(); } };
         _partyScroll = new ScrollControl(_partyMenu, "BattlePartyScroll") { OverflowX = OverflowBehavior.Hidden, OverflowY = OverflowBehavior.Auto };
         _partyRows = new Panel(_partyScroll, "BattlePartyRows") { Dock = Pos.Top };
+        _itemsMenu = new Panel(_commands, "BattleItemsMenu") { IsHidden = true };
+        _itemsBack = Button(_itemsMenu, "BattleItemsBack", Strings.MonsterBattle.Back);
+        _itemsBack.Clicked += (_, _) => { _commandMenu = CommandMenu.Main; RefreshControls(); };
+        _itemsScroll = new ScrollControl(_itemsMenu, "BattleItemsScroll") { OverflowX = OverflowBehavior.Hidden, OverflowY = OverflowBehavior.Auto };
+        _itemRows = new Panel(_itemsScroll, "BattleItemRows") { Dock = Pos.Top };
         _fight = Button(_mainMenu, "FightButton", Strings.MonsterBattle.Fight);
-        _bag = Button(_mainMenu, "BagButton", Strings.MonsterBattle.Bag);
+        _bag = Button(_mainMenu, "BagButton", Strings.MonsterBattle.Items);
+        _bag.Clicked += (_, _) =>
+        {
+            if (CanCommand && !_bag.IsDisabled) { _commandMenu = CommandMenu.Items; RefreshControls(); }
+        };
         _monsters = Button(_mainMenu, "MonstersBattleButton", Strings.MonsterBattle.PartyMenu);
-        _monsters.Clicked += (_, _) => { if (CanCommand) { _inParty = true; RefreshControls(); } };
+        _monsters.Clicked += (_, _) => { if (CanCommand) { _commandMenu = CommandMenu.Party; RefreshControls(); } };
         _run = Button(_mainMenu, "RunButton", Strings.MonsterBattle.RunUnavailable);
         _run.Clicked += (_, _) => Submit(MonsterBattleActionKind.Run);
-        _fight.Clicked += (_, _) => { if (CanCommand) { _inFight = true; RefreshControls(); } };
+        _fight.Clicked += (_, _) => { if (CanCommand) { _commandMenu = CommandMenu.Fight; RefreshControls(); } };
         _back = Button(_fightMenu, "BackBattleButton", Strings.MonsterBattle.Back);
-        _back.Clicked += (_, _) => { _inFight = false; RefreshControls(); };
+        _back.Clicked += (_, _) => { _commandMenu = CommandMenu.Main; RefreshControls(); };
         for (var i = 0; i < 4; i++)
         {
             var slot = i; _moves[i] = Button(_fightMenu, "BattleMove" + i, string.Empty);
@@ -103,6 +116,8 @@ public sealed class MonsterBattleWindow : Window
             MonsterBattleEventKind.StatusDamage => Math.Max(.5, _animation.Duration),
             MonsterBattleEventKind.DamageApplied or MonsterBattleEventKind.HPRecovered => .5,
             MonsterBattleEventKind.MonsterFainted => .55,
+            MonsterBattleEventKind.CaptureDeviceUsed => 1.15,
+            MonsterBattleEventKind.CaptureFailed => .8,
             _ => .45,
         };
         _playback.EventStarted = _animation.Begin;
@@ -130,7 +145,9 @@ public sealed class MonsterBattleWindow : Window
     {
         base.OnJsonReloaded();
         // JSON controls geometry/style, never battle legality, phase, HP or rendered artwork.
-        _partySnapshot = null;
+        _partySnapshot = _itemSnapshot = null;
+        // These panels share manually assigned bounds, including in layouts saved with Fill docking.
+        _mainMenu.Dock = _fightMenu.Dock = _partyMenu.Dock = _itemsMenu.Dock = Pos.None;
         _animation.ResetPanels();
         if (_playback.State is { } state) { LoadArt(state); RefreshControls(); }
     }
@@ -161,7 +178,7 @@ public sealed class MonsterBattleWindow : Window
     }
     private void LayoutMenus()
     {
-        // Hidden docked panels are not laid out by Gwen. Size both views before changing visibility.
+        // Each submenu uses the full command viewport, including on the frame it is opened.
         _mainMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
         _fightMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
         Grid(_mainMenu, [_fight, _bag, _monsters, _run], 2, _commands.Height);
@@ -170,6 +187,9 @@ public sealed class MonsterBattleWindow : Window
         _partyMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
         _partyScroll.SetBounds(0, 0, _commands.Width, Math.Max(1, _commands.Height - (MustReplace ? 0 : 34)));
         _partyBack.SetBounds(0, _commands.Height - 32, Math.Min(180, _commands.Width), 30);
+        _itemsMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
+        _itemsScroll.SetBounds(0, 0, _commands.Width, Math.Max(1, _commands.Height - 34));
+        _itemsBack.SetBounds(0, _commands.Height - 32, Math.Min(180, _commands.Width), 30);
     }
     private static void Grid(Panel parent, Button[] controls, int columns, int height)
     {
@@ -180,13 +200,32 @@ public sealed class MonsterBattleWindow : Window
     {
         var now = Stopwatch.GetTimestamp(); var elapsed = Math.Max(0, (now - _lastTick) / (double)Stopwatch.Frequency); _lastTick = now;
         var state = Globals.Me?.MonsterBattleState;
-        if (state == null) { _seen = null; _playback.Reset(); _inFight = _inParty = false; _partySnapshot = null; ClearArt(); Hide(); return; }
+        if (state == null)
+        {
+            _seen = null;
+            _playback.Reset();
+            _commandMenu = CommandMenu.Main;
+            _partySnapshot = null;
+            ClearItemRows();
+            ClearArt();
+            Hide();
+            return;
+        }
         if (!ReferenceEquals(state, _seen))
         {
             _seen = state;
-            if (_playback.Accept(state)) { _inFight = _inParty = false; LoadArt(state); Show(); elapsed = 0; }
+            if (_playback.Accept(state))
+            {
+                _commandMenu = CommandMenu.Main;
+                LoadArt(state);
+                Show();
+                elapsed = 0;
+            }
         }
         _playback.Tick(Math.Min(elapsed, 1));
+        if (_playback.Phase == MonsterBattlePresentationPhase.ShowingResult && state.Outcome == MonsterBattleOutcome.Captured &&
+            Globals.Me is { } player)
+            player.PresentedCaptureRevision = state.Revision;
         RefreshControls();
     }
     private void LoadArt(MonsterBattleStatePacket state)
@@ -211,6 +250,37 @@ public sealed class MonsterBattleWindow : Window
         var frame = _playerArt.Frame;
         _playerSprite.SetTextureRect(frame.X, frame.Y, frame.Width, frame.Height);
         _playerSprite.SetToolTipText(_playerArt.Fallback ? Strings.MonsterBattle.RearFallback : actor.Name);
+    }
+
+    private void RefreshItems(MonsterBattleStatePacket state)
+    {
+        if (ReferenceEquals(_itemSnapshot, state)) return;
+        ClearItemRows();
+        _itemSnapshot = state;
+        _itemRows.Height = state.CaptureDevices.Length * 42;
+        foreach (var device in state.CaptureDevices)
+        {
+            var button = Button(_itemRows, "CaptureDevice" + device.Id, Strings.MonsterBattle.CaptureDeviceCount.ToString(Short(device.Name, 44), device.Quantity));
+            button.Dock = Pos.Top;
+            button.Width = Math.Max(1, _itemsScroll.Width - 24);
+            button.SetToolTipText(device.Name);
+            button.Clicked += (_, _) =>
+            {
+                if (ReferenceEquals(state, _playback.State) && button.IsVisibleInTree)
+                    Submit(MonsterBattleActionKind.Capture, item: device.Id);
+            };
+        }
+    }
+
+    private void ClearItemRows()
+    {
+        _itemSnapshot = null;
+        foreach (var child in _itemRows.Children.ToArray())
+        {
+            child.IsHidden = true;
+            _itemRows.RemoveChild(child, dispose: true);
+        }
+        _itemRows.Height = 0;
     }
 
     private void RefreshParty(MonsterBattleStatePacket state)
@@ -291,6 +361,8 @@ public sealed class MonsterBattleWindow : Window
         _status.Text = _playback.Phase switch
         {
             MonsterBattlePresentationPhase.AwaitingServer => Strings.MonsterBattle.Waiting,
+            MonsterBattlePresentationPhase.ShowingResult when state.Outcome == MonsterBattleOutcome.Captured =>
+                Short(_playback.Text, 220),
             MonsterBattlePresentationPhase.ShowingResult => Strings.MonsterBattle.Result.ToString(state.Outcome),
             MonsterBattlePresentationPhase.CommandSelection when state.IsCorrection || state.IsWild && state.Turn == 1 =>
                 Short(_playback.Text, 220),
@@ -304,16 +376,31 @@ public sealed class MonsterBattleWindow : Window
             if (opponentStages.Length > 0) _status.Text += $"\n{Short(state.Opponent.Name, 20)}  {opponentStages}";
         }
         _status.SetToolTipText(_playback.Text);
+        if (_itemSnapshot != null && !ReferenceEquals(_itemSnapshot, state)) ClearItemRows();
         LayoutMenus();
-        _mainMenu.IsHidden = !CanCommand || _inFight || _inParty;
-        _fightMenu.IsHidden = !CanCommand || !_inFight;
-        _partyMenu.IsHidden = !MustReplace && (!CanCommand || !_inParty);
+        var hasDevices = state.CaptureDevices.Length > 0;
+        if (CanCommand && _commandMenu == CommandMenu.Items && (!state.AllowsCapture || !hasDevices))
+            _commandMenu = CommandMenu.Main;
+
+        var showFight = CanCommand && _commandMenu == CommandMenu.Fight;
+        var showItems = CanCommand && _commandMenu == CommandMenu.Items;
+        var showParty = MustReplace || (CanCommand && _commandMenu == CommandMenu.Party);
+        _mainMenu.IsHidden = !CanCommand || _commandMenu != CommandMenu.Main;
+        _itemsMenu.IsHidden = !showItems;
+        _fightMenu.IsHidden = !showFight;
+        _partyMenu.IsHidden = !showParty;
         _partyBack.IsHidden = MustReplace;
-        if (!_partyMenu.IsHidden) RefreshParty(state);
+        if (showItems) RefreshItems(state);
+        if (showParty) RefreshParty(state);
+
         _monsters.IsDisabled = !CanCommand || state.Party.Length == 0;
-        _fight.IsDisabled = !CanCommand || _inFight; _back.IsDisabled = !CanCommand || !_inFight;
-        _bag.IsDisabled = true;
-        _bag.SetToolTipText(Strings.MonsterBattle.Unavailable);
+        _fight.IsDisabled = !CanCommand || showFight;
+        _back.IsDisabled = !showFight;
+        _bag.Text = !state.AllowsCapture ? Strings.MonsterBattle.ItemsProhibited :
+            hasDevices ? Strings.MonsterBattle.Items : Strings.MonsterBattle.ItemsEmpty;
+        _bag.IsDisabled = !CanCommand || !state.AllowsCapture || !hasDevices;
+        _bag.SetToolTipText(!state.AllowsCapture ? Strings.MonsterBattle.CaptureProhibited :
+            hasDevices ? Strings.MonsterBattle.CaptureItemsHelp : Strings.MonsterBattle.CaptureNoDevices);
         _run.Text = state.CanRun ? Strings.MonsterBattle.RunAvailable : Strings.MonsterBattle.RunUnavailable;
         _run.IsDisabled = !state.CanRun || !CanCommand;
         _run.SetToolTipText(state.CanRun ? Strings.MonsterBattle.RunHelp : Strings.MonsterBattle.RunProhibited);
@@ -322,7 +409,7 @@ public sealed class MonsterBattleWindow : Window
             var move = state.Moves.FirstOrDefault(m => m.Slot == i);
             _moves[i].Text = move == null ? Strings.MonsterBattle.Empty : $"{Short(move.Name, 40)}\n{Short(move.Type, 20)} / {move.Category}\nPP {move.PP}/{move.MaximumPP}";
             _moves[i].SetToolTipText(move == null ? Strings.MonsterBattle.Empty : move.Name + " - " + move.Type + " / " + move.Category + " " + move.UnavailableReason);
-            _moves[i].IsDisabled = !CanCommand || !_inFight || move?.Usable != true;
+            _moves[i].IsDisabled = !showFight || move?.Usable != true;
         }
         _forfeit.IsDisabled = !CanCommand && !MustReplace;
         _close.IsDisabled = _playback.Phase != MonsterBattlePresentationPhase.ShowingResult;
@@ -348,8 +435,13 @@ public sealed class MonsterBattleWindow : Window
             var actor = player ? _playback.DisplayedPlayer ?? state.Player : state.Opponent; var e = _playback.CurrentEvent; var p = _playback.Progress;
             var offset = e?.Kind == MonsterBattleEventKind.MoveUsed && e.ActorId == actor.Id ? Math.Sin(Math.PI * Math.Clamp(_playback.Elapsed / .35, 0, 1)) * 16 :
                 e?.Kind == MonsterBattleEventKind.DamageApplied && e.TargetId == actor.Id && e.HPAfter < e.HPBefore ? -Math.Sin(Math.PI * p) * 7 : 0;
+            if (!player && e?.Kind == MonsterBattleEventKind.CaptureDeviceUsed)
+                offset = Math.Sin(p * Math.PI * 6) * Math.Sin(p * Math.PI) * 8;
             var fainted = player ? _playback.PlayerFainted : _playback.OpponentFainted;
             var opacity = fainted ? 0 : e?.Kind == MonsterBattleEventKind.MonsterFainted && e.TargetId == actor.Id ? 1 - p : 1;
+            if (!player && state.Outcome == MonsterBattleOutcome.Captured &&
+                (e?.Kind == MonsterBattleEventKind.BattleFinished || _playback.Phase == MonsterBattlePresentationPhase.ShowingResult))
+                opacity = 0;
             if (player && e?.Kind == MonsterBattleEventKind.Withdraw) opacity = 1 - p;
             if (player && e?.Kind == MonsterBattleEventKind.SendOut) opacity = p;
             bounds.X += (int)(offset * (player ? 1 : -1)); bounds.Y += (int)(offset * (player ? -.35 : .35));
@@ -365,16 +457,18 @@ public sealed class MonsterBattleWindow : Window
             state.Opponent.Id, _opponentSprite);
     }
 
-    private void Submit(MonsterBattleActionKind kind, int slot = -1, Guid target = default)
+    private void Submit(MonsterBattleActionKind kind, int slot = -1, Guid target = default, Guid item = default)
     {
         if (_playback.State is not { Outcome: MonsterBattleOutcome.Active } state || (!CanCommand && !MustReplace)) return;
         if (kind == MonsterBattleActionKind.Run && (!state.CanRun || !CanCommand)) return;
-        if (kind == MonsterBattleActionKind.Move && (!CanCommand || !_inFight || !state.Moves.Any(move => move.Slot == slot && move.Usable))) return;
+        if (kind == MonsterBattleActionKind.Move && (!CanCommand || _commandMenu != CommandMenu.Fight || !state.Moves.Any(move => move.Slot == slot && move.Usable))) return;
         if (kind is MonsterBattleActionKind.Switch or MonsterBattleActionKind.Replace &&
             (_partyMenu.IsHidden || !state.Party.Any(member => member.Actor.Id == target && target != state.Player.Id && member.Actor.HP > 0))) return;
+        if (kind == MonsterBattleActionKind.Capture && (!CanCommand || _commandMenu != CommandMenu.Items || !state.AllowsCapture ||
+            !state.CaptureDevices.Any(device => device.Id == item && device.Quantity > 0))) return;
         if (!_playback.BeginAwaiting()) return;
         RefreshControls();
-        _send(new() { BattleId = state.BattleId, Turn = state.Turn, Revision = state.Revision, MoveSlot = slot, Kind = kind, MonsterId = target });
+        _send(new() { BattleId = state.BattleId, Turn = state.Turn, Revision = state.Revision, MoveSlot = slot, Kind = kind, MonsterId = target, ItemId = item });
     }
     public override void Hide()
     {
@@ -387,6 +481,7 @@ public sealed class MonsterBattleWindow : Window
     protected override void OnClose(Base sender, EventArgs args)
     {
         _animation.Cancel();
+        ClearItemRows();
         base.OnClose(sender, args);
 
         if (_playback.State is { AwaitingPresentationClose: true } state)

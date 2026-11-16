@@ -202,7 +202,7 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterEncounters().TargetModel, designTime: true);
+        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterCaptureSettings().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
         var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
         Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");
@@ -300,10 +300,15 @@ public class MonsterSpeciesTests
                 var previous = db.Database.GetMigrations().Last(id => string.CompareOrdinal(id, MigrationId) < 0);
                 db.GetService<IMigrator>().Migrate(previous);
                 db.Npcs.Add(new NPCDescriptor(npcId) { Name = "Existing NPC", Level = 7 });
-                db.Items.Add(new ItemDescriptor(itemId) { Name = "Existing Item" });
                 db.Spells.Add(new SpellDescriptor(spellId) { Name = "Existing Spell" });
                 MonsterEncounterTests.InsertLegacyMap(db, new MapController(mapId) { Name = "Existing Map" });
                 db.SaveChanges();
+                db.Database.Migrate();
+                db.Items.Add(new ItemDescriptor(itemId) { Name = "Existing Item" });
+                db.SaveChanges();
+                db.ChangeTracker.Clear();
+                // Round-trip the item through the pre-capture schema, where none of its new fields exist.
+                db.GetService<IMigrator>().Migrate("20261114000000_AddMonsterEncounters");
                 db.Database.Migrate();
                 Assert.That(db.Database.HasPendingModelChanges(), Is.False, "SQLite snapshot matches the runtime model.");
                 db.MonsterSpecies.Add(species);
@@ -328,7 +333,10 @@ public class MonsterSpeciesTests
                 Assert.That(loaded.BaseStats.SpecialAttack, Is.EqualTo(64));
                 Assert.That(loaded.BaseStats.SpecialDefense, Is.EqualTo(72));
                 Assert.That(db.Npcs.Single(n => n.Id == npcId).Level, Is.EqualTo(7));
-                Assert.That(db.Items.Single(i => i.Id == itemId).Name, Is.EqualTo("Existing Item"));
+                var legacyItem = db.Items.Single(i => i.Id == itemId);
+                Assert.That(legacyItem.Name, Is.EqualTo("Existing Item"));
+                Assert.That(legacyItem.CaptureMultiplier, Is.EqualTo(1m));
+                Assert.That(legacyItem.GuaranteedCapture, Is.False);
                 Assert.That(db.Spells.Single(s => s.Id == spellId).Name, Is.EqualTo("Existing Spell"));
                 Assert.That(db.Maps.Single(m => m.Id == mapId).Name, Is.EqualTo("Existing Map"));
                 db.MonsterSpecies.Remove(loaded);

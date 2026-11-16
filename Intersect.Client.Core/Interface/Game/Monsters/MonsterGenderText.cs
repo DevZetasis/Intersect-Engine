@@ -1,4 +1,5 @@
 using Intersect.Client.Framework.Graphics;
+using Intersect.Client.MonoGame.Graphics;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace Intersect.Client.Interface.Game.Monsters;
@@ -10,7 +11,7 @@ internal static class MonsterGenderText
         if (id == null) return "Unspecified";
         if (string.IsNullOrWhiteSpace(name)) return "Unavailable";
         if (string.IsNullOrWhiteSpace(symbol) || font is not Font<SpriteFont> platformFont) return name;
-        var characters = platformFont.GetRendererFor(size).PlatformObject.Characters;
-        return symbol.All(characters.Contains) ? $"{name} {symbol}" : name;
+        var spriteFont = platformFont.GetRendererFor(size).PlatformObject;
+        return MonsterSymbolGlyphs.Supports(spriteFont, symbol) ? $"{name} {symbol}" : name;
     }
 }
