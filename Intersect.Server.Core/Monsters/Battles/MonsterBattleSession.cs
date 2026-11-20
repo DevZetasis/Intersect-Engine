@@ -19,10 +19,17 @@ public sealed partial class MonsterBattleSession
     private MonsterBattleCombatant Opponent => _opponentSide.Active;
     private string[] _messages = ["Practice battle started. Select a command."];
     private MonsterBattlePresentationEvent[] _events = [];
+    private string[] _experienceMessages = [];
+    internal bool HasExperienceResults => _experienceMessages.Length > 0;
     private Guid _previousRevision;
     private readonly string _background;
     private readonly Action<IReadOnlyList<MonsterBattleCombatant>>? _persist;
     private MonsterBattleCombatant[] _changed = [];
+    private readonly HashSet<Guid> _participants;
+    internal IReadOnlySet<Guid> Participants => _participants;
+    internal IReadOnlyList<MonsterBattleCombatant> Party => _playerSide.Party;
+    internal Func<IReadOnlyList<MonsterBattleCombatant>, IReadOnlyList<string>>? PersistVictory { get; set; }
+    internal Func<CaptureTurn, IReadOnlyList<MonsterBattleCombatant>, (string? Destination, IReadOnlyList<string> Messages)>? PersistCaptureWithRewards { get; set; }
 
     public bool Reserves(Guid monster) => _playerSide.Party.Any(member => member.Id == monster);
     public Guid Id { get; } = Guid.NewGuid();
@@ -64,6 +71,7 @@ public sealed partial class MonsterBattleSession
         _background = background;
         _persist = persistParty ?? (persist == null ? null : changed => persist(changed.Single()));
         _playerSide = player.Copy();
+        _participants = [player.Active.Id];
         _opponentSide = opponent.Copy();
         SnapshotStatuses(findStatus ?? MonsterStatusDescriptor.Get);
         _rules = rules with { };
@@ -75,15 +83,29 @@ public sealed partial class MonsterBattleSession
     {
         if (_captureTurn is { } capture)
         {
-            var destination = _persistCapture!(capture, _changed);
+            var (destination, messages) = PersistCaptureWithRewards != null
+                ? PersistCaptureWithRewards(capture, _changed)
+                : (_persistCapture!(capture, _changed), Array.Empty<string>());
             if (capture.Target != null)
             {
-                var result = $"{Opponent.Name} was captured and placed in {destination}.";
-                _messages = [.._messages, result];
-                _events = [.._events, new() { Kind = MonsterBattleEventKind.BattleFinished, Order = _events.Length, Text = result }];
+                AppendResults([$"{Opponent.Name} was captured and placed in {destination}."]);
+                _experienceMessages = messages.ToArray();
             }
         }
+        else if (Outcome == MonsterBattleOutcome.Victory && PersistVictory != null)
+            _experienceMessages = PersistVictory(_changed).ToArray();
         else if (_changed.Length > 0) _persist?.Invoke(_changed);
+    }
+
+    private void AppendResults(IReadOnlyList<string> messages)
+    {
+        if (messages.Count == 0) return;
+        var first = _events.Length;
+        _messages = [.._messages, ..messages];
+        _events = [.._events, ..messages.Select((message, index) => new MonsterBattlePresentationEvent
+        {
+            Kind = MonsterBattleEventKind.BattleFinished, Order = first + index, Text = message,
+        })];
     }
 
     private static int[] PP(MonsterBattleCombatant actor) => actor.Moves.Select(move => move?.PP ?? 0).ToArray();
@@ -94,6 +116,7 @@ public sealed partial class MonsterBattleSession
         {
             var resources = _playerSide.Party.Concat(_opponentSide.Party).Select(actor => (Actor: actor, actor.HP, PP: PP(actor), actor.Stages, actor.Status)).ToArray();
             var active = Player.Id;
+            var participants = _participants.ToArray();
             var turn = Turn;
             var revision = Revision;
             var previous = _previousRevision;
@@ -112,6 +135,8 @@ public sealed partial class MonsterBattleSession
                         saved.Actor.Status = saved.Status;
                     }
                     _playerSide.Select(active);
+                    _participants.Clear();
+                    _participants.UnionWith(participants);
                     Turn = turn;
                     Revision = revision;
                     _previousRevision = previous;
@@ -119,6 +144,7 @@ public sealed partial class MonsterBattleSession
                     Phase = phase;
                     _messages = messages;
                     _events = events;
+                    _experienceMessages = [];
                     _changed = [];
                     _captureTurn = null;
                 }
@@ -229,6 +255,7 @@ public sealed partial class MonsterBattleSession
         }
         Player.Stages = new();
         _playerSide.Select(target);
+        _participants.Add(target);
         messages.Add($"{Player.Name} entered the battle!");
         events.Add(new() { Kind = MonsterBattleEventKind.SendOut, Order = events.Count, ActorId = Player.Id, TargetId = Player.Id, Incoming = Player.View(), Text = messages[^1] });
     }
@@ -460,6 +487,7 @@ public sealed partial class MonsterBattleSession
             PreviousRevision = _previousRevision, IsCorrection = rejection != null, Background = _background,
             AllowsCapture = CanCapture,
             CaptureDevices = CanCapture ? _captureDevices?.Invoke() ?? [] : [],
+            ExperienceMessages = _experienceMessages,
             Events = rejection == null ? _events.Select(item => item with { }).ToArray() : [],
         };
     }

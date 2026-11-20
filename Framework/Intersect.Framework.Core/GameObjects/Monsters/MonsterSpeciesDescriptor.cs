@@ -19,6 +19,9 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
     public string BattleBackground { get; set; } = string.Empty;
     public string Folder { get; set; } = string.Empty;
     public int BaseCaptureChance { get; set; } = 40;
+    public int BaseExperienceYield { get; set; }
+    public MonsterGrowthPreset GrowthPreset { get; set; }
+    public Guid? ExperienceCurveId { get; set; }
 
     [NotMapped]
     public MonsterBaseStats BaseStats { get; set; } = new();
@@ -63,7 +66,9 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
     }
 
     [NotMapped, JsonIgnore]
-    public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Description != null && Sprite != null &&
+    public bool IsValid => BaseExperienceYield >= 0 && Enum.IsDefined(GrowthPreset) &&
+                           (GrowthPreset == MonsterGrowthPreset.Custom ? ExperienceCurveId is { } curveId && curveId != Guid.Empty : ExperienceCurveId == null) &&
+                           !string.IsNullOrWhiteSpace(Name) && Description != null && Sprite != null &&
                            FrontBattleSprite is { Length: <= 255 } && BackBattleSprite is { Length: <= 255 } && BattleBackground is { Length: <= 255 } && Folder != null && BaseCaptureChance is >= 0 and <= 100 && BaseStats is { IsValid: true } && TypeIds != null && TypeIds.Length <= 2 &&
                            TypeIds.All(id => id != Guid.Empty) && TypeIds.Distinct().Count() == TypeIds.Length && Learnset != null &&
                            Learnset.All(entry => entry is { IsValid: true });
@@ -84,6 +89,9 @@ public sealed class MonsterSpeciesDescriptor : DatabaseObject<MonsterSpeciesDesc
             if (appearance.Property(nameof(FrontBattleSprite), StringComparison.OrdinalIgnoreCase) == null) FrontBattleSprite = string.Empty;
             if (appearance.Property(nameof(BackBattleSprite), StringComparison.OrdinalIgnoreCase) == null) BackBattleSprite = string.Empty;
             if (appearance.Property(nameof(BattleBackground), StringComparison.OrdinalIgnoreCase) == null) BattleBackground = string.Empty;
+            if (appearance.Property(nameof(BaseExperienceYield), StringComparison.OrdinalIgnoreCase) == null) BaseExperienceYield = 0;
+            if (appearance.Property(nameof(GrowthPreset), StringComparison.OrdinalIgnoreCase) == null) GrowthPreset = MonsterGrowthPreset.MediumFast;
+            if (appearance.Property(nameof(ExperienceCurveId), StringComparison.OrdinalIgnoreCase) == null) ExperienceCurveId = null;
             base.Load(json, keepCreationTime);
         }
         finally

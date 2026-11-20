@@ -142,6 +142,24 @@ public class MonsterRosterLayoutTests
             }
             Assert.That(Named("SelectedCondition").Text, Does.Contain("25 / 100"));
             Assert.That(Named("SelectedMovePP").Text, Does.Contain("3/20"));
+            first.Experience = 1760;
+            first.Details.LevelStartExperience = 1728;
+            first.Details.NextLevelExperience = 2197;
+            first.Details.PendingMove = new()
+            {
+                DecisionId = Guid.NewGuid(), Available = true, Name = "Rising Leaf", Type = "Training",
+                Category = "Physical", Power = 60, Accuracy = 100, MaximumPP = 20, Description = "A strong strike.",
+            };
+            window.SetLearningAvailable(true);
+            for (var i = 0; i < 8; i++) { queue.Invoke(canvas, null); layout.Invoke(canvas, [skin]); }
+            Assert.That(Named("SelectedIdentity").Text, Does.Contain("remaining"));
+            Assert.That(Named("PendingMoveDetails").Text, Does.Contain("Learn Rising Leaf?"));
+            Assert.That(Named("PendingMoveDetails").Text, Does.Contain("Power 60"));
+            var choice = Descendants(window).OfType<Button>().Single(button => button.Name == "LearnMoveChoice1");
+            Assert.That(choice.IsVisibleInTree, Is.True);
+            Assert.That(choice.Height, Is.GreaterThanOrEqualTo(34));
+            window.SetLearningAvailable(false);
+            Assert.That(choice.IsVisibleInTree, Is.False);
             Assert.That(Descendants(window).OfType<ProgressBar>().Single(b => b.Name == "SelectedHPBar").Value, Is.EqualTo(.25f));
             Assert.That(Named("Stat0Cell1").Text, Is.EqualTo("100"));
             Assert.That(Named("Stat5Cell2").Text, Is.EqualTo("6"));

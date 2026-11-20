@@ -1,4 +1,4 @@
-﻿using Intersect.Core;
+using Intersect.Core;
 using Intersect.Editor.Content;
 using Intersect.Editor.Core;
 using Intersect.Editor.General;
@@ -561,6 +561,15 @@ internal sealed partial class PacketHandler
                     var species = new MonsterGenderDescriptor(id);
                     species.Load(json);
                     MonsterGenderDescriptor.Lookup.Set(id, species);
+                }
+                break;
+            case GameObjectType.MonsterExperienceCurve:
+                if (deleted) MonsterExperienceCurveDescriptor.Lookup.DeleteAt(id);
+                else
+                {
+                    var curve = new MonsterExperienceCurveDescriptor(id);
+                    curve.Load(json);
+                    MonsterExperienceCurveDescriptor.Lookup.Set(id, curve);
                 }
                 break;
             case GameObjectType.MonsterEncounterTable:

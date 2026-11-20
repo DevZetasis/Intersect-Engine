@@ -10,7 +10,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     public object SyncRoot => Intersect.Server.Monsters.MonsterTypeRules.ContentGate;
     private sealed record ActiveBattle(MonsterBattleSession Session, TaskCompletionSource<MonsterBattleOutcome>? Completion);
 
-    private sealed record PendingPresentation(MonsterBattleSession Session, TaskCompletionSource<MonsterBattleOutcome> Completion)
+    private sealed record PendingPresentation(MonsterBattleSession Session, TaskCompletionSource<MonsterBattleOutcome>? Completion)
     {
         public ITimer? Timeout { get; set; }
     }
@@ -98,10 +98,10 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
             }
 
             _active.Remove(owner);
-            if (battle.Completion is { } completion && session.Outcome is
+            if (session.HasExperienceResults || battle.Completion != null && session.Outcome is
                 MonsterBattleOutcome.Victory or MonsterBattleOutcome.Defeat or MonsterBattleOutcome.Escaped or MonsterBattleOutcome.Captured)
             {
-                var presentation = new PendingPresentation(session, completion);
+                var presentation = new PendingPresentation(session, battle.Completion);
                 _pending.Add(owner, presentation);
                 presentation.Timeout = (timeProvider ?? TimeProvider.System).CreateTimer(_ =>
                 {
@@ -159,7 +159,7 @@ public sealed class MonsterBattleRegistry(Action<Guid, MonsterBattleStatePacket>
     {
         if (!_pending.Remove(owner, out var pending)) return;
         pending.Timeout?.Dispose();
-        pending.Completion.TrySetResult(outcome);
+        pending.Completion?.TrySetResult(outcome);
     }
 
     private bool Send(ActiveBattle battle, string? rejection = null, bool awaitingPresentationClose = false)

@@ -77,5 +77,6 @@ public sealed class MonsterBattleStatePacket : IntersectPacket
     [Key(18)] public bool AwaitingPresentationClose { get; set; }
     [Key(19)] public bool AllowsCapture { get; set; }
     [Key(20)] public MonsterBattleCaptureDevice[] CaptureDevices { get; set; } = [];
+    [Key(21)] public string[] ExperienceMessages { get; set; } = [];
 
 }

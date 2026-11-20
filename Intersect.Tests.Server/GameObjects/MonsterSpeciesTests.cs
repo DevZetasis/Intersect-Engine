@@ -202,10 +202,14 @@ public class MonsterSpeciesTests
             },
         });
         var migration = new Intersect.Server.Migrations.MySql.Game.AddMonsterSpecies();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterCaptureSettings().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
-        var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel());
-        Assert.That(differences, Is.Empty, "MySQL migration target matches the runtime model.");
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Game.AddMonsterExperienceCurves().TargetModel, designTime: true);
+        Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty, "MySQL migration target matches the runtime model.");
+        var experienceMigration = new Intersect.Server.Migrations.MySql.Game.AddMonsterExperienceCurves();
+        var experienceSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(experienceMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(experienceSql, Does.Contain("CREATE TABLE `MonsterExperienceCurves`"));
+        Assert.That(experienceSql, Does.Contain("ADD `BaseExperienceYield` int NOT NULL DEFAULT 0"));
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
             .Generate(migration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(sql, Does.Contain("CREATE TABLE `MonsterSpecies`"));

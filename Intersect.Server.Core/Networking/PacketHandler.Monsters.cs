@@ -28,6 +28,30 @@ internal sealed partial class PacketHandler
         if (!client.IsEditor && client.Entity is { InGame: true } player) MonsterRoster.Send(player);
     }
 
+    public void HandlePacket(Client client, ResolveMonsterMoveLearningPacket packet)
+    {
+        if (client.IsEditor || client.Entity is not { InGame: true } player) return;
+        var message = "";
+        try
+        {
+            var registry = Intersect.Server.Monsters.Battles.MonsterPracticeBattles.Registry;
+            lock (registry.SyncRoot)
+                if (registry.HasActive(player.Id) || registry.HasActiveWild(player.Id) ||
+                    !MonsterRoster.CreateService().ResolveMoveLearning(player.Id, packet.MonsterId, packet.DecisionId, packet.Slot))
+                    message = "This choice is no longer available or the battle is still open.";
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            message = "The collection changed. Review the current move choice.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not resolve monster move learning for {PlayerId}", player.Id);
+            message = "Unable to save the move choice. Please try again.";
+        }
+        MonsterRoster.Send(player, message);
+    }
+
     public void HandlePacket(Client client, MoveOwnedMonsterPacket packet)
     {
         if (client.IsEditor || client.Entity is not { InGame: true } player) return;

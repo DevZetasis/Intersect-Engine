@@ -853,7 +853,7 @@ internal sealed partial class NetworkedPacketHandler
         //CreateGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.CreateGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable or GameObjectType.MonsterExperienceCurve)
             {
                 lock (MonsterTypeRules.ContentGate) HandleCreateGameObjectPacket(client, packet);
             }
@@ -930,7 +930,7 @@ internal sealed partial class NetworkedPacketHandler
         //DeleteGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.DeleteGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable or GameObjectType.Animation)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable or GameObjectType.MonsterExperienceCurve or GameObjectType.Animation)
             {
                 lock (MonsterTypeRules.ContentGate) HandleDeleteGameObjectPacket(client, packet);
             }
@@ -980,6 +980,17 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterExperienceCurve:
+                    using (var gameDb = DbInterface.CreateGameContext())
+                    {
+                        if (gameDb.MonsterSpecies.Any(species => species.ExperienceCurveId == id))
+                        {
+                            PacketSender.SendError(client, "Remove this curve from all species before deleting it.", "Monster Experience Curve");
+                            return;
+                        }
+                    }
+                    obj = MonsterExperienceCurveDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterEncounterTable:
                     using (var gameDb = DbInterface.CreateGameContext())
@@ -1176,7 +1187,7 @@ internal sealed partial class NetworkedPacketHandler
         //SaveGameObjectPacket
         public void HandlePacket(Client client, Network.Packets.Editor.SaveGameObjectPacket packet)
         {
-            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable)
+            if (packet.Type is GameObjectType.MonsterSpecies or GameObjectType.MonsterType or GameObjectType.MonsterMove or GameObjectType.MonsterNature or GameObjectType.MonsterStatus or GameObjectType.MonsterGender or GameObjectType.MonsterEncounterTable or GameObjectType.MonsterExperienceCurve)
             {
                 lock (MonsterTypeRules.ContentGate) HandleSaveGameObjectPacket(client, packet);
             }
@@ -1208,6 +1219,9 @@ internal sealed partial class NetworkedPacketHandler
                 case GameObjectType.Item:
                     obj = ItemDescriptor.Get(id);
 
+                    break;
+                case GameObjectType.MonsterExperienceCurve:
+                    obj = MonsterExperienceCurveDescriptor.Get(id);
                     break;
                 case GameObjectType.MonsterEncounterTable:
                     obj = MonsterEncounterTableDescriptor.Get(id);
@@ -1348,7 +1362,7 @@ internal sealed partial class NetworkedPacketHandler
                             break;
                     }
 
-                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterEncounterTableDescriptor)
+                    if (obj is MonsterSpeciesDescriptor or MonsterTypeDescriptor or MonsterMoveDescriptor or MonsterNatureDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterEncounterTableDescriptor or MonsterExperienceCurveDescriptor)
                     {
                         try
                         {
@@ -1357,6 +1371,8 @@ internal sealed partial class NetworkedPacketHandler
                                 var candidate = new MonsterSpeciesDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterTypeRules.Validate(candidate, typeId => MonsterTypeDescriptor.Get(typeId) != null);
+                                if (candidate.ExperienceCurveId is { } curve && MonsterExperienceCurveDescriptor.Get(curve) == null)
+                                    throw new InvalidOperationException("The species experience curve does not exist.");
                                 MonsterMoveRules.ValidateLearnset(candidate, moveId => MonsterMoveDescriptor.Get(moveId) != null);
                                 if (!MonsterGenderDescriptor.ValidDistribution(candidate.GenderWeights, gender => MonsterGenderDescriptor.Get(gender) != null))
                                     throw new InvalidOperationException("Gender weights must reference existing genders and include a positive weight.");
@@ -1366,6 +1382,13 @@ internal sealed partial class NetworkedPacketHandler
                                 var candidate = new MonsterNatureDescriptor(id);
                                 candidate.Load(packet.Data);
                                 MonsterNatureRules.Validate(candidate);
+                            }
+                            else if (obj is MonsterExperienceCurveDescriptor)
+                            {
+                                var candidate = new MonsterExperienceCurveDescriptor(id);
+                                candidate.Load(packet.Data);
+                                if (!candidate.IsValid(Options.Instance.Monsters.Battle.MaxLevel))
+                                    throw new InvalidOperationException("Invalid experience curve or insufficient level coverage.");
                             }
                             else if (obj is MonsterEncounterTableDescriptor)
                             {

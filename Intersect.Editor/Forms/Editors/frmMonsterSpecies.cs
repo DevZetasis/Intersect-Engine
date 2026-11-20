@@ -23,6 +23,12 @@ public sealed class FrmMonsterSpecies : EditorForm
     private readonly DarkComboBox _frontBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _backBattleSprite = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkComboBox _battleBackground = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly DarkNumericUpDown _experienceYield = new() { Minimum = 0, Maximum = int.MaxValue };
+    private readonly DarkComboBox _growthCurve = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private sealed record GrowthChoice(MonsterGrowthPreset Preset, Guid? Id, string Label)
+    {
+        public override string ToString() => Label;
+    }
     private readonly DarkNumericUpDown _captureChance = new() { Minimum = 0, Maximum = 100, Value = 40 };
     private readonly DarkNumericUpDown _hp = StatInput();
     private readonly DarkNumericUpDown _attack = StatInput();
@@ -75,6 +81,8 @@ public sealed class FrmMonsterSpecies : EditorForm
         AddField(Strings.MonsterSpeciesEditor.BackBattleSprite, _backBattleSprite);
         AddField(Strings.MonsterSpeciesEditor.BattleBackground, _battleBackground);
         AddField("Base Capture Chance (%)", _captureChance);
+        AddField("Base EXP Yield", _experienceYield);
+        AddField("EXP Growth Curve", _growthCurve);
         AddField(Strings.MonsterSpeciesEditor.HP, _hp);
         AddField(Strings.MonsterSpeciesEditor.Attack, _attack);
         AddField(Strings.MonsterSpeciesEditor.Defense, _defense);
@@ -102,6 +110,8 @@ public sealed class FrmMonsterSpecies : EditorForm
             combo.SelectedIndexChanged += EditFields;
         }
         _captureChance.ValueChanged += EditFields;
+        _experienceYield.ValueChanged += EditFields;
+        _growthCurve.SelectedIndexChanged += EditFields;
         _name.TextChanged += EditFields;
         _description.TextChanged += EditFields;
         _folder.TextChanged += EditFields;
@@ -207,6 +217,17 @@ public sealed class FrmMonsterSpecies : EditorForm
                 combo.SelectedItem = choice;
             }
             _captureChance.Value = Math.Clamp(_selected.BaseCaptureChance, 0, 100);
+            _experienceYield.Value = Math.Max(0, _selected.BaseExperienceYield);
+            var choices = new List<GrowthChoice>
+            {
+                new(MonsterGrowthPreset.MediumFast, null, "Medium Fast"), new(MonsterGrowthPreset.Fast, null, "Fast"),
+                new(MonsterGrowthPreset.MediumSlow, null, "Medium Slow"), new(MonsterGrowthPreset.Slow, null, "Slow"),
+            };
+            choices.AddRange(MonsterExperienceCurveDescriptor.Lookup.Values.Cast<MonsterExperienceCurveDescriptor>()
+                .OrderBy(curve => curve.Name).Select(curve => new GrowthChoice(MonsterGrowthPreset.Custom, curve.Id, curve.Name)));
+            _growthCurve.Items.Clear();
+            _growthCurve.Items.AddRange(choices.ToArray());
+            _growthCurve.SelectedItem = choices.FirstOrDefault(choice => choice.Preset == _selected.GrowthPreset && choice.Id == _selected.ExperienceCurveId);
             _hp.Value = _selected.BaseStats.HP;
             _attack.Value = _selected.BaseStats.Attack;
             _defense.Value = _selected.BaseStats.Defense;
@@ -261,6 +282,12 @@ public sealed class FrmMonsterSpecies : EditorForm
         _selected.BackBattleSprite = _backBattleSprite.SelectedIndex <= 0 ? string.Empty : _backBattleSprite.Text;
         _selected.BattleBackground = _battleBackground.SelectedIndex <= 0 ? string.Empty : _battleBackground.Text;
         _selected.BaseCaptureChance = (int)_captureChance.Value;
+        _selected.BaseExperienceYield = (int)_experienceYield.Value;
+        if (_growthCurve.SelectedItem is GrowthChoice choice)
+        {
+            _selected.GrowthPreset = choice.Preset;
+            _selected.ExperienceCurveId = choice.Id;
+        }
         _selected.BaseStats.HP = (int)_hp.Value;
         _selected.BaseStats.Attack = (int)_attack.Value;
         _selected.BaseStats.Defense = (int)_defense.Value;

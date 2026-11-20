@@ -31,6 +31,11 @@ public sealed class MonsterRosterWindow : Window
     private readonly Label _condition, _movePP;
     private readonly ProgressBar _conditionHP;
     private readonly Label _calculationStatus;
+    private readonly ProgressBar _experience;
+    private readonly Label _learningNotice;
+    private readonly Panel _learningActions;
+    private readonly Button[] _learningButtons = new Button[5];
+    private bool _canLearn;
     private readonly List<Label[]> _statRows = [];
     private readonly List<Label> _detailLabels = [];
     private OwnedMonstersPacket? _displayed;
@@ -92,10 +97,26 @@ public sealed class MonsterRosterWindow : Window
         _species.WrappingBehavior = WrappingBehavior.Wrapped;
 
         _identity = DetailLabel("SelectedIdentity", 48);
+        _experience = new ProgressBar(_detailsContent)
+        {
+            Name = "SelectedExperience", Dock = Pos.Top, Height = 14, Font = _font, FontSize = 14, AutoLabel = false,
+        };
         _nature = DetailLabel("SelectedNature", 28);
         _gender = DetailLabel("SelectedGender", 28);
         _condition = DetailLabel("SelectedCondition", 28);
         _conditionHP = new ProgressBar(_detailsContent) { Name = "SelectedHPBar", Dock = Pos.Top, Height = 18, Font = _font, FontSize = 14, AutoLabel = false };
+        _learningNotice = DetailLabel("PendingMoveDetails", 56);
+        _learningActions = new Panel(_detailsContent, "PendingMoveActions") { Dock = Pos.Top, Height = 170, IsHidden = true };
+        for (var index = 0; index < _learningButtons.Length; index++)
+        {
+            var slot = index - 1;
+            var button = new Button(_learningActions, "LearnMoveChoice" + index)
+            {
+                Dock = Pos.Top, Height = 34, MinimumSize = new Point(0, 34), Font = _font, FontSize = 14,
+            };
+            button.Clicked += (_, _) => ResolveMove(slot);
+            _learningButtons[index] = button;
+        }
         _movePP = DetailLabel("SelectedMovePP", 100);
         _calculationStatus = DetailLabel("CalculationStatus", 0);
         AddStatRow("StatHeader", [Strings.Monsters.Stat, Strings.Monsters.Calculated, Strings.Monsters.IV, Strings.Monsters.EV]);
@@ -164,7 +185,7 @@ public sealed class MonsterRosterWindow : Window
     private void EnsureReadableFonts()
     {
         // These controls must be measurable, not just drawable with a skin fallback.
-        foreach (var label in new Label[] { _status, _refresh, _move, TitleLabel }.Concat(_detailLabels).Concat(_statRows.SelectMany(row => row)))
+        foreach (var label in new Label[] { _status, _refresh, _move, TitleLabel }.Concat(_learningButtons).Concat(_detailLabels).Concat(_statRows.SelectMany(row => row)))
         {
             label.Font ??= _font;
             label.FontSize = Math.Max(14, label.FontSize);
@@ -193,10 +214,11 @@ public sealed class MonsterRosterWindow : Window
         }
         foreach (var label in _detailLabels)
         {
-            label.IsHidden = string.IsNullOrEmpty(label.Text);
+            label.IsHidden = string.IsNullOrEmpty(label.Text) || (label == _learningNotice && _learningActions.IsHidden);
             label.Height = label.IsHidden ? 0 : Math.Max(label.MinimumSize.Y, label.TextHeight + 8);
         }
-        _detailsContent.Height = 126 + _detailLabels.Sum(label => label.Height) + 36 * _statRows.Count;
+        _detailsContent.Height = 126 + (_experience.IsHidden ? 0 : 14) + (_learningActions.IsHidden ? 0 : 170) +
+            _detailLabels.Sum(label => label.Height) + 36 * _statRows.Count;
         base.Layout(skin);
         // ListBox's content-sized table can otherwise collapse while its scroll panel is laid out.
         var tableWidth = Math.Max(230, _list.Width - 24);
@@ -211,6 +233,14 @@ public sealed class MonsterRosterWindow : Window
     {
         ClientNetwork.SendPacket(new RequestOwnedMonstersPacket());
         Update();
+    }
+
+    public void SetLearningAvailable(bool available)
+    {
+        if (_canLearn == available) return;
+        _canLearn = available;
+        UpdateSelection();
+        Invalidate();
     }
 
     public void Update()
@@ -256,7 +286,8 @@ public sealed class MonsterRosterWindow : Window
                 cell.MinimumSize = new Point(0, 32);
                 cell.Padding = new Padding(4);
             }
-            if (monster.Id == selectedId) _list.SelectedRow = row;
+            if (monster.Id == selectedId || selectedId == null && _list.SelectedRow == null && monster.Details?.PendingMove != null)
+                _list.SelectedRow = row;
         }
         var partyCount = roster.Monsters.Count(monster => monster.Location == MonsterLocation.Party);
         _status.Text = string.IsNullOrEmpty(roster.Message)
@@ -272,6 +303,9 @@ public sealed class MonsterRosterWindow : Window
         _name.Text = string.Empty;
         _species.Text = string.Empty;
         _identity.Text = string.Empty;
+        _experience.IsHidden = true;
+        _learningNotice.Text = "";
+        _learningActions.IsHidden = true;
         _nature.Text = _gender.Text = string.Empty;
         _condition.Text = _movePP.Text = string.Empty; _conditionHP.Value = 0; _conditionHP.Text = string.Empty; _conditionHP.IsHidden = true;
         _totalEvs.Text = string.Empty;
@@ -286,9 +320,38 @@ public sealed class MonsterRosterWindow : Window
         _species.Text = speciesName;
         _name.SetToolTipText(_name.Text);
         _species.SetToolTipText(speciesName);
-        _identity.Text = Strings.Monsters.Identity.ToString(monster.Level, monster.Experience,
-            monster.Location == MonsterLocation.Party ? Strings.Monsters.Party : Strings.Monsters.Storage, monster.Slot + 1);
         var data = monster.Details;
+        var current = Math.Max(monster.Experience, data?.LevelStartExperience ?? 0);
+        _identity.Text = Strings.Monsters.Identity.ToString(monster.Level, current,
+            monster.Location == MonsterLocation.Party ? Strings.Monsters.Party : Strings.Monsters.Storage, monster.Slot + 1);
+        if (data?.AtLevelCap == true) _identity.Text += "\nMaximum level reached";
+        else if (data?.NextLevelExperience is { } next && next > data.LevelStartExperience)
+        {
+            current = Math.Min(current, next - 1);
+            _identity.Text = Strings.Monsters.Identity.ToString(monster.Level, current,
+                monster.Location == MonsterLocation.Party ? Strings.Monsters.Party : Strings.Monsters.Storage, monster.Slot + 1);
+            _identity.Text += $"\nNext level at {next:N0} EXP ({next - current:N0} remaining)";
+            _experience.Value = (float)((double)(current - data.LevelStartExperience) / (next - data.LevelStartExperience));
+            _experience.IsHidden = false;
+        }
+        if (_canLearn && data?.PendingMove is { } pending)
+        {
+            _learningActions.IsHidden = false;
+            var power = pending.Power is { } value ? $"  Power {value}" : "";
+            _learningNotice.Text = pending.Available
+                ? $"Learn {pending.Name}?\n{pending.Type} / {pending.Category}{power}  Accuracy {pending.Accuracy}%  PP {pending.MaximumPP}\n{pending.Description}"
+                : "This queued move is no longer available.";
+            _learningNotice.SetToolTipText(_learningNotice.Text);
+            _learningButtons[0].Text = pending.Available ? "Decline move" : "Dismiss";
+            for (var index = 1; index < _learningButtons.Length; index++)
+            {
+                var known = data.Moves.FirstOrDefault(move => move.Slot == index - 1);
+                _learningButtons[index].Text = $"Replace {index}. {known?.Name ?? "Empty slot"}";
+                _learningButtons[index].SetToolTipText(_learningButtons[index].Text);
+                _learningButtons[index].IsDisabled = !pending.Available;
+            }
+        }
+        Invalidate();
         if (data?.ConditionInitialized == true)
         {
             _condition.Text = $"HP {data.CurrentHP} / {data.MaximumHP}" + (data.CurrentHP == 0 ? " - Fainted" : "");
@@ -332,6 +395,16 @@ public sealed class MonsterRosterWindow : Window
     }
 
     private static string Value(long[]? values, int index) => values is { Length: 6 } ? values[index].ToString() : "—";
+
+    private void ResolveMove(int slot)
+    {
+        if (!_canLearn || _list.SelectedRow?.UserData is not OwnedMonsterSummary monster ||
+            monster.Details?.PendingMove is not { } pending || (!pending.Available && slot >= 0)) return;
+        ClientNetwork.SendPacket(new ResolveMonsterMoveLearningPacket
+        {
+            MonsterId = monster.Id, DecisionId = pending.DecisionId, Slot = slot,
+        });
+    }
 
     private void MoveSelected()
     {

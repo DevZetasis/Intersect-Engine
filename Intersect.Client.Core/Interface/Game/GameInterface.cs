@@ -348,10 +348,10 @@ public partial class GameInterface : MutableInterface
             PlayerBox?.SetEntity(Globals.Me);
         }
 
-        GameMenu?.Update(mShouldUpdateQuestLog);
+        _monsterBattleWindow?.Update();
+        GameMenu?.Update(mShouldUpdateQuestLog, _monsterBattleWindow?.IsVisibleInTree != true && !EventWindow.HasPendingDialog);
         mShouldUpdateQuestLog = false;
         Hotbar?.Update();
-        _monsterBattleWindow?.Update();
         EscapeMenu.Update();
         PlayerBox?.Update();
         PlayerStatusWindow?.Update();

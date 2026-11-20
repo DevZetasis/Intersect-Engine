@@ -107,6 +107,9 @@ public partial class FrmMain : Form
         var encounterMenu = new ToolStripMenuItem("Monster Encounter Table Editor");
         encounterMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterEncounterTable);
         contentEditorsToolStripMenuItem.DropDownItems.Add(encounterMenu);
+        var curveMenu = new ToolStripMenuItem("Monster Experience Curve Editor");
+        curveMenu.Click += (_, _) => PacketSender.SendOpenEditor(GameObjectType.MonsterExperienceCurve);
+        contentEditorsToolStripMenuItem.DropDownItems.Add(curveMenu);
 
         dockLeft.Theme = new VS2015DarkTheme();
         Globals.MapListWindow = new FrmMapList();
@@ -1647,6 +1650,11 @@ public partial class FrmMain : Form
                         mItemEditor.Show();
                     }
 
+                    break;
+                case GameObjectType.MonsterExperienceCurve:
+                    var curveEditor = new FrmMonsterExperienceCurve();
+                    curveEditor.InitEditor();
+                    curveEditor.Show();
                     break;
                 case GameObjectType.MonsterEncounterTable:
                     var encounterEditor = new FrmMonsterEncounterTable();

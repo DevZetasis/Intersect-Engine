@@ -8,7 +8,7 @@ namespace Intersect.Server.Monsters;
 public sealed partial class MonsterOwnershipService
 {
     internal OwnedMonsterSummary? CommitCapture(Guid owner, InventorySlot liveSlot, Guid itemId, Guid receipt,
-        IReadOnlyList<BattleCondition> changes, GeneratedWildMonster? wild, BattleCondition? target)
+        IReadOnlyList<BattleCondition> changes, GeneratedWildMonster? wild, BattleCondition? target, BattleExperience? experience = null)
     {
         if (owner == Guid.Empty || itemId == Guid.Empty || receipt == Guid.Empty ||
             liveSlot.ItemId != itemId || liveSlot.Quantity <= 0 || liveSlot.BagId != null || liveSlot.Bag != null ||
@@ -33,7 +33,7 @@ public sealed partial class MonsterOwnershipService
 
             // The caller holds the user autosave lock. The live slot is newer than the database after pickups or grants.
             slot.StageCapture(liveSlot, receipt);
-            StageBattleConditions(db, owner, changes, receipt);
+            var party = StageBattleConditions(db, owner, changes, receipt);
             MonsterInstance? caught = null;
             if (wild != null)
             {
@@ -44,6 +44,7 @@ public sealed partial class MonsterOwnershipService
                 if (position < 0) throw new InvalidOperationException("No monster storage slot is available.");
                 caught = MonsterInstance.FromCapture(owner, receipt, location, position, wild, target!, _rules);
                 db.OwnedMonsters.Add(caught);
+                StageExperience(party, experience, receipt);
             }
 
             try

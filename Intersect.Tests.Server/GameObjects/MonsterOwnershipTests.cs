@@ -302,9 +302,9 @@ public class MonsterOwnershipTests
             ConnectionStringBuilder = new MySqlConnector.MySqlConnectionStringBuilder { Server = "127.0.0.1", Database = "unused", UserID = "unused" },
         });
         var migration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsters();
-        var snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddInventoryCaptureReceipt().TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
-        Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(snapshot.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterExperience().TargetModel, designTime: true);
+        Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(sql, Does.Contain("CREATE TABLE `OwnedMonsters`"));
         Assert.That(sql, Does.Contain("UNIQUE INDEX"));
@@ -335,6 +335,6 @@ public class MonsterOwnershipTests
         var move = new MoveOwnedMonsterPacket { MonsterId = monster.Id, ExpectedRevision = monster.Revision, Destination = MonsterLocation.Storage };
         Assert.That(MessagePacker.Instance.Deserialize<MoveOwnedMonsterPacket>(MessagePacker.Instance.Serialize(move))!.ExpectedRevision, Is.EqualTo(monster.Revision));
         Assert.That(MessagePacker.Instance.Deserialize<RequestOwnedMonstersPacket>(MessagePacker.Instance.Serialize(new RequestOwnedMonstersPacket())), Is.Not.Null);
-        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v12"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(SharedConstants.VersionData), Does.EndWith("|monster-ownership-v1|monster-types-v1|monster-moves-v1|monster-natures-v1|monster-battles-v13"));
     }
 }

@@ -32,7 +32,8 @@ public static class MonsterDiagnostics
         {
             if (species == null || (monster.NatureId != null && nature?.Id != monster.NatureId))
                 throw new InvalidOperationException("Referenced species/nature definition is missing.");
-            var stats = MonsterStatCalculator.Calculate(species.BaseStats, monster.Level, monster.IVs, monster.EVs, nature, rules);
+            var stats = MonsterStatCalculator.Calculate(species.BaseStats, monster.Level, monster.IVs, monster.EVs, nature,
+                rules with { MaxLevel = Math.Max(rules.MaxLevel, monster.Level) });
             lines.Add("Calculated stats: " + string.Join(" / ", stats.ToArray()));
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)

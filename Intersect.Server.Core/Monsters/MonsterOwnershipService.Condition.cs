@@ -20,7 +20,8 @@ public sealed partial class MonsterOwnershipService
         if (species == null) return cleared; // Missing legacy content must not fabricate a heal or maximum.
         var nature = monster.NatureId is { } natureId ? _natures().SingleOrDefault(n => n.Id == natureId) : null;
         if (monster.NatureId != null && nature == null) return cleared;
-        var maximum = MonsterStatCalculator.Calculate(species.BaseStats, monster.Level, monster.IVs, monster.EVs, nature, _rules).HP;
+        var rules = _rules with { MaxLevel = Math.Max(_rules.MaxLevel, monster.Level) };
+        var maximum = MonsterStatCalculator.Calculate(species.BaseStats, monster.Level, monster.IVs, monster.EVs, nature, rules).HP;
         return monster.ReconcileCondition(maximum, monster.MoveIds.Select(id => id is { } value ? _move(value) : null).ToArray()) || cleared;
     }
     public int Heal(Guid owner, Guid? monsterId, MonsterHealingScope scope, MonsterRecovery recovery)
@@ -57,7 +58,7 @@ public sealed partial class MonsterOwnershipService
     internal Guid CommitBattle(Guid owner, Guid monsterId, Guid expectedRevision, long hp, long maximum, MonsterMovePP[] pp) =>
         CommitBattle(owner, [new BattleCondition(monsterId, expectedRevision, hp, maximum, pp)]);
 
-    internal Guid CommitBattle(Guid owner, IReadOnlyList<BattleCondition> changes)
+    internal Guid CommitBattle(Guid owner, IReadOnlyList<BattleCondition> changes, BattleExperience? experience = null)
     {
         if (changes.Count == 0) throw new ArgumentException("A battle commit requires condition changes.", nameof(changes));
         var ids = changes.Select(change => change.Id).ToArray();
@@ -70,28 +71,26 @@ public sealed partial class MonsterOwnershipService
             try
             {
                 using var db = _createContext();
-                StageBattleConditions(db, owner, changes, token);
+                var monsters = StageBattleConditions(db, owner, changes, token);
+                StageExperience(monsters, experience, token);
                 // EF commits all tracked updates in one transaction, including concurrency checks.
                 if (db.SaveChanges() <= 0) throw new InvalidOperationException("Turn condition was not committed.");
                 return token;
             }
             catch
             {
-                // Only accept an ambiguous commit if every participating write matches the new token and values.
+                // The unique token on every row confirms the entire transaction, including progression.
                 using var verify = _createContext();
                 var saved = verify.OwnedMonsters.AsNoTracking().Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner)
                     .ToDictionary(m => m.Id);
-                if (changes.All(change => saved.TryGetValue(change.Id, out var monster) && monster.Revision == token &&
-                    monster.CurrentHP == change.HP && monster.MaximumHPAtLastUpdate == change.MaximumHP &&
-                    monster.StatusId == change.StatusId && monster.StatusTurns == change.StatusTurns &&
-                    monster.MovePP.SequenceEqual(change.PP))) return token;
+                if (changes.All(change => saved.TryGetValue(change.Id, out var monster) && monster.Revision == token)) return token;
                 throw;
             }
         }
     }
-    private static void StageBattleConditions(PlayerContext db, Guid owner, IReadOnlyList<BattleCondition> changes, Guid token)
+    private static Dictionary<Guid, MonsterInstance> StageBattleConditions(PlayerContext db, Guid owner, IReadOnlyList<BattleCondition> changes, Guid token)
     {
-        if (changes.Count == 0) return;
+        if (changes.Count == 0) return [];
         var ids = changes.Select(change => change.Id).ToArray();
         var monsters = db.OwnedMonsters.Where(m => ids.Contains(m.Id) && m.OwnerPlayerId == owner &&
             m.Location == MonsterLocation.Party).ToDictionary(m => m.Id);
@@ -102,6 +101,7 @@ public sealed partial class MonsterOwnershipService
             monster.SetCondition(change.HP, change.MaximumHP, change.PP, token);
             monster.SetStatus(change.StatusId, change.StatusTurns, token);
         }
+        return monsters;
     }
 
     internal void ReplaceMove(Guid owner, Guid monsterId, int slot, Guid? moveId)

@@ -17,6 +17,8 @@ public sealed class EventCommandStartMonsterBattle : UserControl
     private readonly FrmEvent? _editor;
     private readonly DarkComboBox _species = new() { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly DarkCheckBox _allowCapture = new() { Dock = DockStyle.Top, Height = 28, Text = "Allow Capture" };
+    private readonly DarkCheckBox _awardExperience = new() { Dock = DockStyle.Top, Height = 28, Text = "Award Experience" };
+    private readonly DarkNumericUpDown _experienceMultiplier = new() { Dock = DockStyle.Top, Minimum = 0, Maximum = 10, DecimalPlaces = 2, Increment = 0.05m };
     private readonly DarkNumericUpDown _level = new() { Dock = DockStyle.Top, Minimum = 1 };
 
     public EventCommandStartMonsterBattle(StartMonsterBattleCommand command, FrmEvent? editor)
@@ -24,7 +26,7 @@ public sealed class EventCommandStartMonsterBattle : UserControl
         _command = command;
         _editor = editor;
         Text = "Start Monster Battle";
-        Size = new Size(390, 210);
+        Size = new Size(390, 292);
         MinimumSize = Size;
         BackColor = System.Drawing.Color.FromArgb(45, 45, 48);
         ForeColor = System.Drawing.Color.Gainsboro;
@@ -41,6 +43,13 @@ public sealed class EventCommandStartMonsterBattle : UserControl
 
         var fields = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14) };
         _allowCapture.Checked = command.AllowCapture;
+        _awardExperience.Checked = command.AwardExperience;
+        _experienceMultiplier.Value = Math.Clamp(command.ExperienceMultiplier, 0, 10);
+        _experienceMultiplier.Enabled = _awardExperience.Checked;
+        _awardExperience.CheckedChanged += (_, _) => _experienceMultiplier.Enabled = _awardExperience.Checked;
+        fields.Controls.Add(_experienceMultiplier);
+        fields.Controls.Add(new DarkLabel { Text = "Experience multiplier", Dock = DockStyle.Top, Height = 26 });
+        fields.Controls.Add(_awardExperience);
         fields.Controls.Add(_allowCapture);
         fields.Controls.Add(_level);
         fields.Controls.Add(new DarkLabel { Text = "Opponent level", Dock = DockStyle.Top, Height = 26 });
@@ -78,6 +87,8 @@ public sealed class EventCommandStartMonsterBattle : UserControl
         _command.Level = draft.Level;
         if (_editor != null) _command.EnsureCaptureBranch(_editor.CurrentPage.CommandLists);
         _command.AllowCapture = _allowCapture.Checked;
+        _command.AwardExperience = _awardExperience.Checked;
+        _command.ExperienceMultiplier = _experienceMultiplier.Value;
         return true;
     }
 }

@@ -721,6 +721,13 @@ public static partial class DbInterface
 
             LoadGameObjects(type);
         }
+
+        var monsters = Options.Instance.Monsters;
+        monsters.Battle.Validate();
+        if (monsters.Experience is not { IsValid: true } ||
+            MonsterExperienceCurveDescriptor.Lookup.Values.Cast<MonsterExperienceCurveDescriptor>().Any(curve => !curve.IsValid(monsters.Battle.MaxLevel)) ||
+            MonsterSpeciesDescriptor.Lookup.Values.Cast<MonsterSpeciesDescriptor>().Any(species => species.ExperienceCurveId is { } id && MonsterExperienceCurveDescriptor.Get(id) == null))
+            throw new InvalidOperationException("Invalid monster experience settings or custom curve. Check the configured level cap and curve coverage.");
     }
 
     private static void ClearGameObjects(GameObjectType type)
@@ -750,6 +757,9 @@ public static partial class DbInterface
                 break;
             case GameObjectType.MonsterEncounterTable:
                 MonsterEncounterTableDescriptor.Lookup.Clear();
+                break;
+            case GameObjectType.MonsterExperienceCurve:
+                MonsterExperienceCurveDescriptor.Lookup.Clear();
                 break;
             case GameObjectType.MonsterStatus:
                 MonsterStatusDescriptor.Lookup.Clear();
@@ -878,6 +888,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterEncounterTable:
                         foreach (var table in context.MonsterEncounterTables) MonsterEncounterTableDescriptor.Lookup.Set(table.Id, table);
+                        break;
+                    case GameObjectType.MonsterExperienceCurve:
+                        foreach (var curve in context.MonsterExperienceCurves) MonsterExperienceCurveDescriptor.Lookup.Set(curve.Id, curve);
                         break;
                     case GameObjectType.MonsterStatus:
                         foreach (var status in context.MonsterStatuses) MonsterStatusDescriptor.Lookup.Set(status.Id, status);
@@ -1197,6 +1210,13 @@ public static partial class DbInterface
             case GameObjectType.MonsterEncounterTable:
                 dbObj = new MonsterEncounterTableDescriptor(predefinedid);
                 break;
+            case GameObjectType.MonsterExperienceCurve:
+                dbObj = new MonsterExperienceCurveDescriptor(predefinedid)
+                {
+                    Thresholds = Enumerable.Range(1, Options.Instance.Monsters.Battle.MaxLevel)
+                        .Select(level => MonsterExperience.Threshold(MonsterGrowthPreset.MediumFast, level)).ToArray(),
+                };
+                break;
             case GameObjectType.MonsterStatus:
                 dbObj = new MonsterStatusDescriptor(predefinedid);
                 break;
@@ -1330,6 +1350,10 @@ public static partial class DbInterface
                         context.MonsterEncounterTables.Add((MonsterEncounterTableDescriptor)dbObj);
                         MonsterEncounterTableDescriptor.Lookup.Set(dbObj.Id, dbObj);
                         break;
+                    case GameObjectType.MonsterExperienceCurve:
+                        context.MonsterExperienceCurves.Add((MonsterExperienceCurveDescriptor)dbObj);
+                        MonsterExperienceCurveDescriptor.Lookup.Set(dbObj.Id, dbObj);
+                        break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Add((MonsterStatusDescriptor)dbObj);
                         MonsterStatusDescriptor.Lookup.Set(dbObj.Id, dbObj);
@@ -1459,7 +1483,7 @@ public static partial class DbInterface
 
     public static void DeleteGameObject(IDatabaseObject gameObject)
     {
-        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterEncounterTableDescriptor or MonsterSpeciesDescriptor)
+        if (gameObject is MonsterNatureDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterEncounterTableDescriptor or MonsterSpeciesDescriptor or MonsterExperienceCurveDescriptor)
         {
             lock (Intersect.Server.Monsters.MonsterTypeRules.ContentGate) DeleteGameObjectCore(gameObject);
         }
@@ -1502,6 +1526,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterEncounterTable:
                         context.MonsterEncounterTables.Remove((MonsterEncounterTableDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterExperienceCurve:
+                        context.MonsterExperienceCurves.Remove((MonsterExperienceCurveDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Remove((MonsterStatusDescriptor)gameObject);
@@ -1615,7 +1642,7 @@ public static partial class DbInterface
                         break;
                 }
 
-                if (gameObject is MonsterEncounterTableDescriptor or MonsterSpeciesDescriptor)
+                if (gameObject is MonsterEncounterTableDescriptor or MonsterSpeciesDescriptor or MonsterExperienceCurveDescriptor)
                 {
                     context.SaveChanges();
                     gameObject.Type.GetLookup().Delete(gameObject);
@@ -1705,6 +1732,9 @@ public static partial class DbInterface
                         break;
                     case GameObjectType.MonsterEncounterTable:
                         context.MonsterEncounterTables.Update((MonsterEncounterTableDescriptor)gameObject);
+                        break;
+                    case GameObjectType.MonsterExperienceCurve:
+                        context.MonsterExperienceCurves.Update((MonsterExperienceCurveDescriptor)gameObject);
                         break;
                     case GameObjectType.MonsterStatus:
                         context.MonsterStatuses.Update((MonsterStatusDescriptor)gameObject);

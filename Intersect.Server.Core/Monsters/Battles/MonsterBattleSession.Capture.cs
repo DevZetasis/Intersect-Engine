@@ -16,7 +16,7 @@ public sealed partial class MonsterBattleSession
     private readonly Func<CaptureTurn, IReadOnlyList<MonsterBattleCombatant>, string?>? _persistCapture;
     private CaptureTurn? _captureTurn;
 
-    private bool CanCapture => Wild != null && _captureDevice != null && _persistCapture != null &&
+    private bool CanCapture => Wild != null && _captureDevice != null && (_persistCapture != null || PersistCaptureWithRewards != null) &&
         Outcome == MonsterBattleOutcome.Active && Phase == MonsterBattlePhase.Commands && Opponent.HP > 0;
 
     private (CaptureDevice Device, decimal Chance) ValidateCapture(Guid itemId)

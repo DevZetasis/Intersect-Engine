@@ -207,12 +207,13 @@ public abstract partial class GameContext
     {
         ChangeTracker.DetectChanges();
         if (!ChangeTracker.Entries().Any(entry => (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted) &&
-                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterNatureDescriptor or MonsterEncounterTableDescriptor ||
+                (entry.Entity is MonsterTypeDescriptor or MonsterSpeciesDescriptor or MonsterMoveDescriptor or MonsterStatusDescriptor or MonsterGenderDescriptor or MonsterNatureDescriptor or MonsterEncounterTableDescriptor or MonsterExperienceCurveDescriptor ||
                  entry.Entity is MapController && (entry.State == EntityState.Added || entry.Property(nameof(MapController.EncountersJson)).IsModified) ||
                  (entry.State == EntityState.Deleted && entry.Entity is AnimationDescriptor))))
             return base.SaveChanges(acceptAllChangesOnSuccess);
         lock (MonsterTypeRules.ContentGate)
         {
+            ValidateExperienceCurves();
             ValidateMonsterContent();
             ValidateEncounters();
             return base.SaveChanges(acceptAllChangesOnSuccess);

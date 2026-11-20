@@ -17,6 +17,32 @@ public class MonsterSpeciesEditorTests
         (T)typeof(FrmMonsterSpecies).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor)!;
 
     [Test]
+    public void CurveEditorCopiesPresetIntoDraftAndCanUndoWithoutChangingContent()
+    {
+        if (Options.Instance == null) Options.LoadFromServer("{}");
+        var curve = new MonsterExperienceCurveDescriptor(Guid.NewGuid()) { Name = "Custom Curve", Thresholds = [0, 100, 250] };
+        MonsterExperienceCurveDescriptor.Lookup.Set(curve.Id, curve);
+        try
+        {
+            using var editor = new FrmMonsterExperienceCurve();
+            editor.InitEditor();
+            var editorType = typeof(FrmMonsterExperienceCurve);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var thresholds = (TextBox)editorType.GetField("_thresholds", flags)!.GetValue(editor)!;
+            var preset = (ComboBox)editorType.GetField("_preset", flags)!.GetValue(editor)!;
+            preset.SelectedIndex = 0;
+            editorType.GetMethod("PopulatePreset", flags)!.Invoke(editor, [null, EventArgs.Empty]);
+            Assert.That(thresholds.Lines[0], Is.EqualTo("0"));
+            Assert.That(thresholds.Lines[1], Is.EqualTo("6"));
+            Assert.That(thresholds.Lines, Has.Length.EqualTo(Options.Instance.Monsters.Battle.MaxLevel));
+            Assert.That(curve.Thresholds, Is.EqualTo(new long[] { 0, 100, 250 }));
+            editorType.GetMethod("Undo", flags)!.Invoke(editor, [null, EventArgs.Empty]);
+            Assert.That(thresholds.Lines, Is.EqualTo(new[] { "0", "100", "250" }));
+        }
+        finally { MonsterExperienceCurveDescriptor.Lookup.DeleteAt(curve.Id); }
+    }
+
+    [Test]
     public void EditingFieldsAndCancelDoNotChangeSynchronizedSpecies()
     {
         var species = new MonsterSpeciesDescriptor(Guid.NewGuid()) { Name = "Editor Test" };
@@ -42,6 +68,10 @@ public class MonsterSpeciesEditorTests
             Assert.That(captureChance.Maximum, Is.EqualTo(100));
             captureChance.Value = 0;
             Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BaseCaptureChance, Is.Zero);
+            Field<NumericUpDown>(editor, "_experienceYield").Value = 75;
+            Field<ComboBox>(editor, "_growthCurve").SelectedIndex = 1;
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").BaseExperienceYield, Is.EqualTo(75));
+            Assert.That(Field<MonsterSpeciesDescriptor>(editor, "_selected").GrowthPreset, Is.EqualTo(MonsterGrowthPreset.Fast));
             Field<NumericUpDown>(editor, "_hp").Value = 123;
             Field<NumericUpDown>(editor, "_specialAttack").Value = 456;
             Field<NumericUpDown>(editor, "_specialDefense").Value = 789;
@@ -142,8 +172,8 @@ public class MonsterSpeciesEditorTests
             {
                 var input = Field<NumericUpDown>(editor, fields[index]);
                 Assert.That(input.Value, Is.EqualTo(values[index]));
-                Assert.That(table.GetRow(input), Is.EqualTo(10 + index));
-                var label = table.GetControlFromPosition(0, 10 + index)!;
+                Assert.That(table.GetRow(input), Is.EqualTo(12 + index));
+                var label = table.GetControlFromPosition(0, 12 + index)!;
                 Assert.That(label.PreferredSize.Width, Is.LessThanOrEqualTo((int)table.ColumnStyles[0].Width));
             }
             typeof(FrmMonsterSpecies).GetMethod("UndoSpecies", BindingFlags.Instance | BindingFlags.NonPublic)!

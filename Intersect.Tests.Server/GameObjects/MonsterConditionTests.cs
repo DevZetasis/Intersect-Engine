@@ -353,11 +353,61 @@ public sealed class MonsterConditionTests
         switchBack.Kind = MonsterBattleActionKind.Switch;
         switchBack.MonsterId = a;
         registry.Submit(_owner, switchBack);
+        Assert.That(session.Participants, Is.EquivalentTo(new[] { a, b }));
         Assert.That(Load(b).Revision, Is.EqualTo(switched.Revision));
         Assert.That(Load(a).CurrentHP, Is.LessThan(originalA.CurrentHP));
         Assert.That(Load(a).MovePP, Is.EqualTo(originalA.MovePP));
         registry.Cancel(_owner, "Done.");
         Assert.DoesNotThrow(() => service.Move(_owner, b, Load(b).Revision, MonsterLocation.Storage));
+    }
+
+    [Test]
+    public void VictoryPublishesCommittedExperienceOnlyOnceAndWaitsForPresentationClose()
+    {
+        var id = Grant();
+        var owned = Load(id);
+        var service = Service();
+        var type = new MonsterTypeDescriptor(_move.TypeId);
+        var lead = new MonsterBattleCombatant(new(id, 1, new(owned.MaximumHPAtLastUpdate, 40, 10, 10, 10, 100), [type.Id]),
+            "Lead", "", [new(_move, type), null, null, null]);
+        var wild = new GeneratedWildMonster(Guid.NewGuid(), _species.Id, 1, new(), null, null, [null, null, null, null]);
+        var opponent = new MonsterBattleCombatant(new(wild.Id, 1, new(1, 1, 1, 1, 1, 1), [type.Id]),
+            "Wild", "", [null, null, null, null]);
+        var session = new MonsterBattleSession(new(_owner, [lead]), new(null, [opponent]), MonsterBattleRules.Generation4,
+            new LastRandom(), wild: wild);
+        session.PersistVictory = actors =>
+        {
+            var reward = new MonsterOwnershipService.BattleExperience(100, new Dictionary<Guid, long> { [id] = 8 }, []);
+            service.CommitBattle(_owner, actors.Select(actor => new MonsterOwnershipService.BattleCondition(actor.Id,
+                owned.Revision, actor.HP, actor.MaximumHP, actor.Moves.Select(move =>
+                    new MonsterMovePP(move?.Definition.Id, move?.PP ?? 0, move?.Definition.MaximumPP ?? 0)).ToArray())).ToArray(), reward);
+            return reward.Messages;
+        };
+        MonsterBattleStatePacket? final = null;
+        var registry = new MonsterBattleRegistry((_, packet) =>
+        {
+            if (packet.Outcome != MonsterBattleOutcome.Victory) return;
+            Assert.That(Load(id).Experience, Is.EqualTo(8));
+            final = packet;
+        });
+        try
+        {
+            registry.Start(_owner, () => session);
+            var action = Action(session);
+            registry.Submit(_owner, action);
+            Assert.That(final!.ExperienceMessages, Has.Length.EqualTo(2));
+            Assert.That(final.AwaitingPresentationClose, Is.True);
+            Assert.That(registry.HasActiveWild(_owner), Is.True);
+            Assert.Throws<InvalidOperationException>(() => registry.Submit(_owner, action));
+            Assert.That(Load(id).Experience, Is.EqualTo(8));
+            registry.Submit(_owner, new()
+            {
+                BattleId = final.BattleId, Revision = final.Revision, Turn = final.Turn,
+                Kind = MonsterBattleActionKind.PresentationClosed,
+            });
+            Assert.That(registry.HasActiveWild(_owner), Is.False);
+        }
+        finally { registry.CancelAll(); }
     }
 
     [Test]
@@ -380,6 +430,69 @@ public sealed class MonsterConditionTests
         Assert.That(Load(b.Id).Revision, Is.EqualTo(token));
         Assert.That(Load(a.Id).CurrentHP, Is.EqualTo(a.CurrentHP - 1));
         Assert.That(Load(b.Id).CurrentHP, Is.EqualTo(b.CurrentHP - 1));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void RewardCommitsLevelsAndLearningOnceAndPreservesMissingHpAndPp(bool fainted)
+    {
+        var id = Grant();
+        var first = Load(id);
+        _species.Learnset.Add(new() { Level = 2, MoveId = _second.Id });
+        // Progress saved by pre-leveling builds must never trigger accidental levels.
+        using (var db = Context())
+            db.Database.ExecuteSqlInterpolated($"UPDATE OwnedMonsters SET Experience = {long.MaxValue} WHERE Id = {id}");
+        var hp = fainted ? 0 : first.CurrentHP - 2;
+        var pp = first.MovePP.Select((move, slot) => slot == 0 ? move with { Current = 17 } : move).ToArray();
+        var change = new MonsterOwnershipService.BattleCondition(id, first.Revision, hp, first.MaximumHPAtLastUpdate, pp);
+        var reward = new MonsterOwnershipService.BattleExperience(3, new Dictionary<Guid, long> { [id] = long.MaxValue }, []);
+        _beforeFailure = true;
+        Assert.Throws<IOException>(() => Service().CommitBattle(_owner, [change], reward));
+        _beforeFailure = false;
+        Assert.That(Load(id).Level, Is.EqualTo(1));
+        reward.Messages.Clear();
+        _afterFailure = true;
+        var revision = Service().CommitBattle(_owner, [change], reward);
+        _afterFailure = false;
+        var saved = Load(id);
+        Assert.That(saved.Revision, Is.EqualTo(revision));
+        Assert.That(saved.Level, Is.EqualTo(3));
+        Assert.That(saved.Experience, Is.EqualTo(27));
+        Assert.That(saved.IVs, Is.EqualTo(first.IVs));
+        Assert.That(saved.CurrentHP, Is.EqualTo(fainted ? 0 : saved.MaximumHPAtLastUpdate - 2));
+        Assert.That(saved.MovePP[0].Current, Is.EqualTo(17));
+        Assert.That(saved.MovePP[1], Is.EqualTo(new MonsterMovePP(_second.Id, 7, 7)));
+        Assert.Throws<InvalidOperationException>(() => Service().CommitBattle(_owner, [change], reward));
+        Assert.That(Load(id).Experience, Is.EqualTo(27));
+        var lowered = MonsterBattleRules.Generation4 with { MaxLevel = 2 };
+        var stats = MonsterRosterDetails.Create(saved, _species, null, lowered);
+        Assert.That(stats.AtLevelCap, Is.True);
+        Assert.That(stats.CalculatedStats, Is.EqualTo(MonsterStatCalculator.Calculate(_species.BaseStats, 3, saved.IVs, saved.EVs, null, MonsterBattleRules.Generation4).ToArray()));
+    }
+
+    [Test]
+    public void PersistentLearningRejectsForeignAndStaleChoicesAndPreservesOtherPp()
+    {
+        var moves = new[] { _move, _second }.Concat(Enumerable.Range(0, 4)
+            .Select(_ => new MonsterMoveDescriptor(Guid.NewGuid()) { TypeId = _move.TypeId, MaximumPP = 11 })).ToArray();
+        _species.Learnset = moves.Select((move, index) => new MonsterLearnsetEntry { MoveId = move.Id, Level = index < 4 ? 1 : 2 }).ToList();
+        MonsterOwnershipService ReopenService() => new(Context, _ => true, 6, species: _ => _species,
+            moveExists: id => moves.Any(move => move.Id == id), move: id => moves.FirstOrDefault(move => move.Id == id));
+        var first = Load(ReopenService().Grant(_owner, _species.Id, Guid.NewGuid()).Id);
+        var pp = first.MovePP.Select(move => move with { Current = 1 }).ToArray();
+        ReopenService().CommitBattle(_owner, [new(first.Id, first.Revision, first.CurrentHP, first.MaximumHPAtLastUpdate, pp)],
+            new(100, new Dictionary<Guid, long> { [first.Id] = 8 }, []));
+        var queued = Load(first.Id).Learning.ToArray();
+        Assert.That(queued.Select(learning => learning.MoveId), Is.EqualTo(moves.Skip(4).Select(move => move.Id)));
+        Assert.That(ReopenService().ResolveMoveLearning(_other, first.Id, queued[0].Id, 0), Is.False);
+        Assert.That(ReopenService().ResolveMoveLearning(_owner, first.Id, queued[1].Id, 0), Is.False);
+        Assert.That(ReopenService().ResolveMoveLearning(_owner, first.Id, queued[0].Id, 2), Is.True);
+        Assert.That(ReopenService().ResolveMoveLearning(_owner, first.Id, queued[0].Id, -1), Is.False);
+        Assert.That(ReopenService().ResolveMoveLearning(_owner, first.Id, queued[1].Id, -1), Is.True);
+        var saved = Load(first.Id);
+        Assert.That(saved.MovePP[2], Is.EqualTo(new MonsterMovePP(moves[4].Id, 11, 11)));
+        Assert.That(saved.MovePP.Where((_, slot) => slot != 2), Is.EqualTo(pp.Where((_, slot) => slot != 2)));
+        Assert.That(saved.Learning, Is.Empty);
     }
 
     [Test]

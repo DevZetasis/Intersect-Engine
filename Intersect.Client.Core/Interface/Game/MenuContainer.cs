@@ -263,12 +263,13 @@ public partial class MenuContainer : Panel
     }
 
     //Methods
-    public void Update(bool updateQuestLog)
+    public void Update(bool updateQuestLog, bool showMoveLearning = true)
     {
         _inventoryWindow.Update();
         _spellsWindow.Update();
         _characterWindow.Update();
         _partyWindow.Update();
+        _monsterWindow.SetLearningAvailable(showMoveLearning);
         _monsterWindow.Update();
         _friendsWindow.Update();
         _questsWindow.Update(updateQuestLog);

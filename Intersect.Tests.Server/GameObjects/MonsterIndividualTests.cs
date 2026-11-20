@@ -245,8 +245,8 @@ public class MonsterIndividualTests
         var migration = new Intersect.Server.Migrations.MySql.Player.AddMonsterAttributes();
         var genderMigration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterGender();
         var receiptMigration = new Intersect.Server.Migrations.MySql.Player.AddInventoryCaptureReceipt();
-        var target = db.GetService<IModelRuntimeInitializer>().Initialize(receiptMigration.TargetModel, designTime: true);
         var current = db.GetService<IDesignTimeModel>().Model;
+        var target = db.GetService<IModelRuntimeInitializer>().Initialize(new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterExperience().TargetModel, designTime: true);
         Assert.That(db.GetService<IMigrationsModelDiffer>().GetDifferences(target.GetRelationalModel(), current.GetRelationalModel()), Is.Empty);
         var sql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(sql, Does.Contain("ADD `NatureId` char(36)"));
@@ -258,6 +258,11 @@ public class MonsterIndividualTests
         var receiptSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
             .Generate(receiptMigration.UpOperations, current).Select(command => command.CommandText));
         Assert.That(receiptSql, Does.Contain("ADD `LastCaptureAttempt` char(36)"));
+        var experienceMigration = new Intersect.Server.Migrations.MySql.Player.AddOwnedMonsterExperience();
+        var experienceSql = string.Join("\n", db.GetService<IMigrationsSqlGenerator>()
+            .Generate(experienceMigration.UpOperations, current).Select(command => command.CommandText));
+        Assert.That(experienceSql, Does.Contain("ADD `ExperienceInitialized` tinyint(1) NOT NULL DEFAULT FALSE"));
+        Assert.That(experienceSql, Does.Contain("ADD `MoveLearning` longtext"));
         Assert.That(sql, Does.Not.Contain("DROP TABLE"));
     }
     [Test]

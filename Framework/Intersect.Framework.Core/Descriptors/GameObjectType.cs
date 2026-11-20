@@ -93,4 +93,7 @@ public enum GameObjectType
 
     [GameObjectInfo(typeof(MonsterEncounterTableDescriptor), "monster_encounter_tables")]
     MonsterEncounterTable = 25,
+
+    [GameObjectInfo(typeof(MonsterExperienceCurveDescriptor), "monster_experience_curves")]
+    MonsterExperienceCurve = 26,
 }

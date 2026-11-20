@@ -54,13 +54,14 @@ public static class MonsterPracticeBattles
                 return null;
 
             var result = new TaskCompletionSource<MonsterBattleOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var id = TryStartWildCore(player, command.SpeciesId, command.Level, new SystemMonsterRandom(), null, result, command.AllowCapture);
+            var id = TryStartWildCore(player, command.SpeciesId, command.Level, new SystemMonsterRandom(), null, result, command.AllowCapture,
+                command.AwardExperience ? command.ExperienceMultiplier : 0m);
             return id is { } battleId ? (battleId, result.Task) : null;
         }
     }
 
     private static Guid? TryStartWildCore(Player player, Guid speciesId, int level, IMonsterRandom random,
-        Guid? tableId, TaskCompletionSource<MonsterBattleOutcome>? result, bool allowCapture)
+        Guid? tableId, TaskCompletionSource<MonsterBattleOutcome>? result, bool allowCapture, decimal experienceMultiplier = 1m)
     {
         var service = MonsterRoster.CreateService();
         var party = service.GetPartyForBattle(player.Id);
@@ -71,11 +72,11 @@ public static class MonsterPracticeBattles
         if (lead == null) return null;
 
         return Registry.Start(player.Id, () => CreateSession(player, service, party, lead,
-            speciesId, level, random, isWild: true, tableId: tableId, allowCapture: allowCapture), result);
+            speciesId, level, random, isWild: true, tableId: tableId, allowCapture: allowCapture, experienceMultiplier: experienceMultiplier), result);
     }
 
     private static MonsterBattleSession CreateSession(Player player, MonsterOwnershipService service, MonsterInstance[] party,
-        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, bool isWild = false, Guid? tableId = null, bool allowCapture = false)
+        MonsterInstance owned, Guid opponentSpeciesId, int opponentLevel, IMonsterRandom random, bool isWild = false, Guid? tableId = null, bool allowCapture = false, decimal experienceMultiplier = 1m)
     {
         if (!owned.ConditionInitialized) throw new InvalidOperationException("Monster condition definitions are unavailable.");
         if (owned.CurrentHP == 0) throw new InvalidOperationException("This monster has fainted. Heal its HP before battling.");
@@ -86,6 +87,10 @@ public static class MonsterPracticeBattles
         var rules = Options.Instance.Monsters.Battle;
         rules.Validate();
         if (opponentLevel < 1 || opponentLevel > rules.MaxLevel) throw new InvalidOperationException("Opponent level is outside the battle rules.");
+        var cap = rules.MaxLevel;
+        rules = rules with { MaxLevel = Math.Max(cap, party.Max(member => member.Level)) };
+        var experienceSettings = Options.Instance.Monsters.Experience;
+        var baseYield = opponent.BaseExperienceYield;
         var generated = GeneratedWildMonster.Create(opponent, opponentLevel, random);
         MonsterBattleCombatant Actor(Guid id, string name, MonsterSpeciesDescriptor template, int level, MonsterStatValues ivs, MonsterStatValues evs, MonsterNatureDescriptor? temperament, Guid?[] moveIds, Database.PlayerData.Players.MonsterInstance? condition = null, Guid? generatedGender = null)
         {
@@ -135,14 +140,34 @@ public static class MonsterPracticeBattles
                 ? new(item.Name, item.CaptureMultiplier, item.GuaranteedCapture)
                 : null;
 
-        string? PersistCapture(MonsterBattleSession.CaptureTurn capture, IReadOnlyList<MonsterBattleCombatant> actors)
+        MonsterBattleSession? session = null;
+        MonsterOwnershipService.BattleExperience PlanExperience(bool captured)
         {
+            var awards = new Dictionary<Guid, long>();
+            foreach (var actor in session!.Party.Where(actor => actor.Calculation.Level < cap))
+            {
+                var award = MonsterExperience.Reward(baseYield, opponentLevel, experienceSettings, experienceMultiplier,
+                    captured, session.Participants.Contains(actor.Id), actor.HP == 0);
+                if (award > 0) awards.Add(actor.Id, award);
+            }
+            return new(cap, awards, []);
+        }
+
+        MonsterBattleCombatant[] IncludeRewardRecipients(IReadOnlyList<MonsterBattleCombatant> changed,
+            MonsterOwnershipService.BattleExperience? experience) => experience == null || experience.Awards.Count == 0
+            ? changed.ToArray()
+            : changed.Concat(session!.Party.Where(actor => experience.Awards.ContainsKey(actor.Id))).DistinctBy(actor => actor.Id).ToArray();
+
+        (string?, IReadOnlyList<string>) PersistCapture(MonsterBattleSession.CaptureTurn capture, IReadOnlyList<MonsterBattleCombatant> changed)
+        {
+            var experience = capture.Target == null ? null : PlanExperience(captured: true);
+            var actors = IncludeRewardRecipients(changed, experience);
             var (caught, slotIndex) = player.User.WithSaveLock(() =>
             {
                 var slot = CaptureSlots().FirstOrDefault(slot => slot.ItemId == capture.ItemId)
                     ?? throw new InvalidOperationException("The capture device is no longer in your inventory.");
                 var result = service.CommitCapture(player.Id, slot, capture.ItemId, capture.Revision,
-                    actors.Select(Condition).ToArray(), capture.Wild, capture.Target == null ? null : Condition(capture.Target));
+                    actors.Select(Condition).ToArray(), capture.Wild, capture.Target == null ? null : Condition(capture.Target), experience);
                 return (result, slot.Slot);
             });
             foreach (var actor in actors) expectedRevisions[actor.Id] = capture.Revision;
@@ -151,10 +176,11 @@ public static class MonsterPracticeBattles
             {
                 Intersect.Core.ApplicationContext.Context.Value?.Logger.LogWarning(exception, "Unable to send committed capture inventory change");
             }
-            return caught == null ? null : $"{caught.Location.ToString().ToLowerInvariant()} slot {caught.Slot + 1}";
+            return (caught == null ? null : $"{caught.Location.ToString().ToLowerInvariant()} slot {caught.Slot + 1}",
+                experience?.Messages ?? []);
         }
 
-        return new(new(player.Id, ownParty, owned.Id), new(null, [opponentActor]), rules, random,
+        session = new(new(player.Id, ownParty, owned.Id), new(null, [opponentActor]), rules, random,
             background: string.IsNullOrWhiteSpace(opponent.BattleBackground) ? species.BattleBackground : opponent.BattleBackground,
             persistParty: actors =>
             {
@@ -167,6 +193,18 @@ public static class MonsterPracticeBattles
                 Name = group.First().Descriptor.Name,
                 Quantity = (int)Math.Min(int.MaxValue, group.Sum(slot => (long)slot.Quantity)),
             }).OrderBy(device => device.Name).ToArray() : null,
-            captureDevice: allowCapture ? FindDevice : null, persistCapture: allowCapture ? PersistCapture : null);
+            captureDevice: allowCapture ? FindDevice : null);
+        if (allowCapture) session.PersistCaptureWithRewards = PersistCapture;
+        if (isWild)
+        {
+            session.PersistVictory = changed =>
+            {
+                var experience = PlanExperience(captured: false);
+                var actors = IncludeRewardRecipients(changed, experience);
+                if (actors.Length > 0) service.CommitBattle(player.Id, actors.Select(Condition).ToArray(), experience);
+                return experience.Messages;
+            };
+        }
+        return session;
     }
 }

@@ -6,4 +6,6 @@ public sealed class MonsterOptions
     public int PartyCapacity { get; set; } = 6;
 
     public MonsterBattleRules Battle { get; set; } = new();
+
+    public MonsterExperienceOptions Experience { get; set; } = new();
 }

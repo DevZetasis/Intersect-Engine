@@ -345,14 +345,19 @@ public sealed class MonsterCaptureTests
         using var staleSave = fixture.Player();
         var staleSlot = staleSave.Player_Items.Single();
         var next = wild with { Id = Guid.NewGuid() };
-        var second = service.CommitCapture(owner, slot, item, Guid.NewGuid(), [], next, condition with { Id = next.Id });
+        var secondReceipt = Guid.NewGuid();
+        var captureReward = new MonsterOwnershipService.BattleExperience(100,
+            new Dictionary<Guid, long> { [wild.Id] = 17 }, []);
+        var partyCondition = condition with { ExpectedRevision = receipt };
+        var second = service.CommitCapture(owner, slot, item, secondReceipt, [partyCondition], next,
+            condition with { Id = next.Id }, captureReward);
         Assert.That(second!.Location, Is.EqualTo(MonsterLocation.Storage));
         Assert.That(second.Slot, Is.Zero);
         Assert.That(slot.Quantity, Is.EqualTo(1));
         staleSlot.Quantity = 10;
         // Intersect's context reports an EF concurrency rejection as -1.
         Assert.That(staleSave.SaveChanges(), Is.EqualTo(-1));
-        var retaliated = condition with { ExpectedRevision = receipt, HP = condition.HP - 1 };
+        var retaliated = condition with { ExpectedRevision = secondReceipt, HP = condition.HP - 1 };
         fixture.BeforeCommitFailure = true;
         Assert.Throws<IOException>(() => service.CommitCapture(owner, slot, item, Guid.NewGuid(), [retaliated], null, null));
         Assert.That(slot.Quantity, Is.EqualTo(1));
@@ -360,7 +365,7 @@ public sealed class MonsterCaptureTests
             Assert.That(beforeRetaliation.OwnedMonsters.Single(monster => monster.Id == wild.Id).CurrentHP, Is.EqualTo(condition.HP));
         fixture.BeforeCommitFailure = false;
         fixture.AfterCommitFailure = true;
-        Assert.That(service.CommitCapture(owner, slot, item, Guid.NewGuid(), [retaliated], null, null), Is.Null);
+        Assert.That(service.CommitCapture(owner, slot, item, Guid.NewGuid(), [retaliated], null, null, captureReward), Is.Null);
         Assert.That(slot.ItemId, Is.EqualTo(Guid.Empty));
         Assert.That(slot.Quantity, Is.Zero);
         fixture.AfterCommitFailure = false;
@@ -373,13 +378,15 @@ public sealed class MonsterCaptureTests
         Assert.That(saved.OwnerPlayerId, Is.EqualTo(owner));
         Assert.That(saved.SpeciesId, Is.EqualTo(wild.SpeciesId));
         Assert.That(saved.Level, Is.EqualTo(wild.Level));
-        Assert.That(saved.Experience, Is.EqualTo(wild.Experience));
+        Assert.That(saved.Experience, Is.EqualTo(2197 + 17));
         Assert.That(saved.IVs, Is.EqualTo(wild.IVs));
         Assert.That(saved.EVs, Is.EqualTo(wild.EVs));
         Assert.That(saved.NatureId, Is.EqualTo(wild.NatureId));
         Assert.That(saved.GenderId, Is.EqualTo(wild.GenderId));
         Assert.That(saved.CurrentHP, Is.EqualTo(retaliated.HP));
         var savedStorage = reopened.OwnedMonsters.AsNoTracking().Single(monster => monster.Id == next.Id);
+        Assert.That(savedStorage.Experience, Is.EqualTo(next.Experience));
+        Assert.That(savedStorage.ExperienceInitialized, Is.False);
         Assert.That(savedStorage.CurrentHP, Is.EqualTo(condition.HP));
         Assert.That(savedStorage.MovePP, Is.EqualTo(condition.PP));
         Assert.That(savedStorage.StatusId, Is.EqualTo(status));

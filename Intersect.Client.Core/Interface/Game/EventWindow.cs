@@ -294,6 +294,8 @@ public partial class EventWindow : Panel
         }
     }
 
+    internal static bool HasPendingDialog => _instance != null || Globals.EventDialogs.Any();
+
     public static void ShowOrUpdateDialog(Canvas canvas)
     {
         if (_instance is { } instance)

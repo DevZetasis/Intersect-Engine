@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Intersect.Framework.Core.GameObjects.Monsters;
 
 namespace Intersect.Framework.Core.GameObjects.Events.Commands;
 
@@ -25,6 +26,8 @@ public sealed class StartMonsterBattleCommand : EventCommand
 
     public bool AllowCapture { get; set; }
     public Guid Capture { get; set; }
+    public bool AwardExperience { get; set; } = true;
+    public decimal ExperienceMultiplier { get; set; } = 1m;
 
     public Guid[] Branches() => Capture == Guid.Empty && !AllowCapture
         ? [Victory, Defeat, Escape]
@@ -38,7 +41,8 @@ public sealed class StartMonsterBattleCommand : EventCommand
     }
 
     public bool IsValid(int maxLevel, Func<Guid, bool> speciesExists) =>
-        SpeciesId != Guid.Empty && speciesExists(SpeciesId) && Level >= 1 && Level <= maxLevel;
+        SpeciesId != Guid.Empty && speciesExists(SpeciesId) && Level >= 1 && Level <= maxLevel &&
+        MonsterExperience.ValidMultiplier(ExperienceMultiplier);
 
     public override string GetCopyData(Dictionary<Guid, List<EventCommand>> commandLists,
         Dictionary<Guid, List<EventCommand>> copyLists)

@@ -21,6 +21,9 @@ public sealed class MonsterBattleWindow : Window
     private readonly IFont _font;
     private readonly Label _status, _playerName, _opponentName, _playerHPValue, _opponentHPValue, _experience, _playerMissing, _opponentMissing;
     private readonly Panel _commands, _mainMenu, _fightMenu, _playerInfo, _opponentInfo;
+    private readonly ScrollControl _rewardScroll;
+    private readonly Panel _rewardRows;
+    private MonsterBattleStatePacket? _rewardSnapshot;
     private readonly Panel _partyMenu, _partyRows;
     private readonly ScrollControl _partyScroll;
     private readonly Button _partyBack;
@@ -60,6 +63,11 @@ public sealed class MonsterBattleWindow : Window
         _advance.Clicked += (_, _) => { _playback.Advance(); RefreshControls(); };
         _skip.Clicked += (_, _) => { _playback.Skip(); RefreshControls(); };
         _commands = new Panel(this, "BattleCommands") { Dock = Pos.Bottom, Height = 178 };
+        _rewardScroll = new ScrollControl(_commands, "BattleExperienceResults")
+        {
+            IsHidden = true, OverflowX = OverflowBehavior.Hidden, OverflowY = OverflowBehavior.Auto,
+        };
+        _rewardRows = new Panel(_rewardScroll, "BattleRewardRows") { Dock = Pos.Top };
         _mainMenu = new Panel(_commands, "BattleMainMenu");
         _fightMenu = new Panel(_commands, "BattleFightMenu");
         _partyMenu = new Panel(_commands, "BattlePartyMenu") { IsHidden = true };
@@ -187,6 +195,7 @@ public sealed class MonsterBattleWindow : Window
         _partyMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
         _partyScroll.SetBounds(0, 0, _commands.Width, Math.Max(1, _commands.Height - (MustReplace ? 0 : 34)));
         _partyBack.SetBounds(0, _commands.Height - 32, Math.Min(180, _commands.Width), 30);
+        _rewardScroll.SetBounds(0, 0, _commands.Width, _commands.Height);
         _itemsMenu.SetBounds(0, 0, _commands.Width, _commands.Height);
         _itemsScroll.SetBounds(0, 0, _commands.Width, Math.Max(1, _commands.Height - 34));
         _itemsBack.SetBounds(0, _commands.Height - 32, Math.Min(180, _commands.Width), 30);
@@ -376,6 +385,7 @@ public sealed class MonsterBattleWindow : Window
             if (opponentStages.Length > 0) _status.Text += $"\n{Short(state.Opponent.Name, 20)}  {opponentStages}";
         }
         _status.SetToolTipText(_playback.Text);
+        ShowExperienceResults(state);
         if (_itemSnapshot != null && !ReferenceEquals(_itemSnapshot, state)) ClearItemRows();
         LayoutMenus();
         var hasDevices = state.CaptureDevices.Length > 0;
@@ -418,6 +428,23 @@ public sealed class MonsterBattleWindow : Window
         _xp.Value = 0; _xp.IsDisabled = true; _experience.Text = Strings.MonsterBattle.Experience;
         PoseSprites();
     }
+    private void ShowExperienceResults(MonsterBattleStatePacket state)
+    {
+        _rewardScroll.IsHidden = _playback.Phase != MonsterBattlePresentationPhase.ShowingResult || state.ExperienceMessages.Length == 0;
+        if (_rewardScroll.IsHidden || ReferenceEquals(_rewardSnapshot, state)) return;
+        _rewardSnapshot = state;
+        foreach (var child in _rewardRows.Children.ToArray()) _rewardRows.RemoveChild(child, dispose: true);
+        const int rowHeight = 30;
+        _rewardRows.Height = state.ExperienceMessages.Length * rowHeight;
+        foreach (var message in state.ExperienceMessages)
+        {
+            var label = Text(_rewardRows, "BattleReward", rowHeight);
+            label.Dock = Pos.Top;
+            label.Text = Short(message, 120);
+            label.SetToolTipText(message);
+        }
+    }
+
     private static void HP(ProgressBar bar, Label label, double hp, long maximum)
     {
         bar.Value = maximum > 0 ? (float)Math.Clamp(hp / maximum, 0, 1) : 0;
